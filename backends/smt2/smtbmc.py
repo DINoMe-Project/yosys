@@ -50,7 +50,7 @@ smtcinit = False
 smtctop = None
 noinit = False
 so = SmtOpts()
-
+formulaOnly=True
 
 def usage():
     print("""
@@ -1345,55 +1345,56 @@ elif covermode:
 
         while "1" in cover_mask:
             print_msg("Checking cover reachability in step %d.." % (step))
-            smt_push()
-            smt_assert("(distinct (covers_%d s%d) #b%s)" % (coveridx, step, "0" * len(cover_desc)))
+            if not formulaOnly:
+                smt_push()
+                smt_assert("(distinct (covers_%d s%d) #b%s)" % (coveridx, step, "0" * len(cover_desc)))
 
-            if smt_check_sat() == "unsat":
-                smt_pop()
-                break
-
-            if append_steps > 0:
-                for i in range(step+1, step+1+append_steps):
-                    print_msg("Appending additional step %d." % i)
-                    smt_state(i)
-                    smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, i))
-                    smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
-                    smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
-                    smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
-                    smt_assert_consequent(get_constr_expr(constr_assumes, i))
-                print_msg("Re-solving with appended steps..")
                 if smt_check_sat() == "unsat":
-                    print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
-                    found_failed_assert = True
-                    retstatus = False
+                    smt_pop()
                     break
 
-            reached_covers = smt.bv2bin(smt.get("(covers_%d s%d)" % (coveridx, step)))
-            assert len(reached_covers) == len(cover_desc)
+                if append_steps > 0:
+                    for i in range(step+1, step+1+append_steps):
+                        print_msg("Appending additional step %d." % i)
+                        smt_state(i)
+                        smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, i))
+                        smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
+                        smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
+                        smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
+                        smt_assert_consequent(get_constr_expr(constr_assumes, i))
+                    print_msg("Re-solving with appended steps..")
+                    if smt_check_sat() == "unsat":
+                        print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
+                        found_failed_assert = True
+                        retstatus = False
+                        break
 
-            new_cover_mask = []
+                reached_covers = smt.bv2bin(smt.get("(covers_%d s%d)" % (coveridx, step)))
+                assert len(reached_covers) == len(cover_desc)
 
-            for i in range(len(reached_covers)):
-                if reached_covers[i] == "0":
-                    new_cover_mask.append(cover_mask[i])
-                    continue
+                new_cover_mask = []
 
-                print_msg("Reached cover statement at %s in step %d." % (cover_desc[i], step))
-                new_cover_mask.append("0")
+                for i in range(len(reached_covers)):
+                    if reached_covers[i] == "0":
+                        new_cover_mask.append(cover_mask[i])
+                        continue
 
-            cover_mask = "".join(new_cover_mask)
+                    print_msg("Reached cover statement at %s in step %d." % (cover_desc[i], step))
+                    new_cover_mask.append("0")
 
-            for i in range(step+1+append_steps):
-                if print_failed_asserts(i, extrainfo=" (step %d)" % i):
-                    found_failed_assert = True
+                cover_mask = "".join(new_cover_mask)
 
-            write_trace(0, step+1+append_steps, "%d" % coveridx)
+                for i in range(step+1+append_steps):
+                    if print_failed_asserts(i, extrainfo=" (step %d)" % i):
+                        found_failed_assert = True
 
-            if found_failed_assert:
-                break
+                write_trace(0, step+1+append_steps, "%d" % coveridx)
 
-            coveridx += 1
-            smt_pop()
+                if found_failed_assert:
+                    break
+
+                coveridx += 1
+                smt_pop()
             smt.write("(define-fun covers_%d ((state |%s_s|)) (_ BitVec %d) (bvand (covers_%d state) #b%s))" % (coveridx, topmod, len(cover_desc), coveridx-1, cover_mask))
 
         if found_failed_assert:
@@ -1468,35 +1469,36 @@ else:  # not tempind, covermode
                     print_msg("Checking assertions in step %d.." % (step))
                 else:
                     print_msg("Checking assertions in steps %d to %d.." % (step, last_check_step))
-                smt_push()
+                if not formulaOnly:
+                    smt_push()
 
-                smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
-                        [get_constr_expr(constr_asserts, i) for i in range(step, last_check_step+1)]))
+                    smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
+                            [get_constr_expr(constr_asserts, i) for i in range(step, last_check_step+1)]))
 
-                if smt_check_sat() == "sat":
-                    print("%s BMC failed!" % smt.timestamp())
-                    if append_steps > 0:
-                        for i in range(last_check_step+1, last_check_step+1+append_steps):
-                            print_msg("Appending additional step %d." % i)
-                            smt_state(i)
-                            smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, i))
-                            smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
-                            smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
-                            smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
-                            smt_assert_consequent(get_constr_expr(constr_assumes, i))
-                    print_msg("Re-solving with appended steps..")
-                    if smt_check_sat() == "unsat":
-                        print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
+                    if smt_check_sat() == "sat":
+                        print("%s BMC failed!" % smt.timestamp())
+                        if append_steps > 0:
+                            for i in range(last_check_step+1, last_check_step+1+append_steps):
+                                print_msg("Appending additional step %d." % i)
+                                smt_state(i)
+                                smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, i))
+                                smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
+                                smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
+                                smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
+                                smt_assert_consequent(get_constr_expr(constr_assumes, i))
+                        print_msg("Re-solving with appended steps..")
+                        if smt_check_sat() == "unsat":
+                            print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
+                            retstatus = False
+                            break
+                        print_anyconsts(step)
+                        for i in range(step, last_check_step+1):
+                            print_failed_asserts(i)
+                        write_trace(0, last_check_step+1+append_steps, '%')
                         retstatus = False
                         break
-                    print_anyconsts(step)
-                    for i in range(step, last_check_step+1):
-                        print_failed_asserts(i)
-                    write_trace(0, last_check_step+1+append_steps, '%')
-                    retstatus = False
-                    break
 
-                smt_pop()
+                    smt_pop()
 
             if (constr_final_start is not None) or (last_check_step+1 != num_steps):
                 for i in range(step, last_check_step+1):
@@ -1509,20 +1511,21 @@ else:  # not tempind, covermode
                         continue
 
                     print_msg("Checking final constraints in step %d.." % (i))
-                    smt_push()
+                    if not formulaOnly:
+                        smt_push()
 
-                    smt_assert_consequent(get_constr_expr(constr_assumes, i, final=True))
-                    smt_assert("(not %s)" % get_constr_expr(constr_asserts, i, final=True))
+                        smt_assert_consequent(get_constr_expr(constr_assumes, i, final=True))
+                        smt_assert("(not %s)" % get_constr_expr(constr_asserts, i, final=True))
 
-                    if smt_check_sat() == "sat":
-                        print("%s BMC failed!" % smt.timestamp())
-                        print_anyconsts(i)
-                        print_failed_asserts(i, final=True)
-                        write_trace(0, i+1, '%')
-                        retstatus = False
-                        break
+                        if smt_check_sat() == "sat":
+                            print("%s BMC failed!" % smt.timestamp())
+                            print_anyconsts(i)
+                            print_failed_asserts(i, final=True)
+                            write_trace(0, i+1, '%')
+                            retstatus = False
+                            break
 
-                    smt_pop()
+                        smt_pop()
                 if not retstatus:
                     break
 
