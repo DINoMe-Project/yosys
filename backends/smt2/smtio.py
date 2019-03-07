@@ -299,6 +299,8 @@ class SmtIo:
         self.p_running = False
 
     def p_open(self):
+        if self.debug_file:
+            return
         assert self.p is None
         self.p = subprocess.Popen(self.popen_vargs, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         running_solvers[self.p_index] = self.p
@@ -309,11 +311,15 @@ class SmtIo:
         self.p_thread.start()
 
     def p_write(self, data, flush):
+        if self.p == None:
+            return
         assert self.p is not None
         self.p.stdin.write(bytes(data, "ascii"))
         if flush: self.p.stdin.flush()
 
     def p_read(self):
+        if self.debug_file:
+            return "unsat"
         assert self.p is not None
         if self.p_next is not None:
             data = self.p_next
@@ -324,6 +330,9 @@ class SmtIo:
         return self.p_queue.get()
 
     def p_poll(self, timeout=0.1):
+        if self.debug_file:
+            return False
+
         assert self.p is not None
         assert self.p_running
         if self.p_next is not None:
@@ -694,6 +703,7 @@ class SmtIo:
             print("(set-info :status %s)" % result, file=self.debug_file)
             print("(check-sat)", file=self.debug_file)
             self.debug_file.flush()
+            result='unsat'
 
         if result not in ["sat", "unsat"]:
             if result == "":
@@ -784,7 +794,7 @@ class SmtIo:
 
     def get_path(self, mod, path):
         assert mod in self.modinfo
-        path = path.replace("\\", "/").split(".")
+        path = path.replace("\\","/").split(".")
 
         for i in range(len(path)-1):
             first = ".".join(path[0:i+1])
