@@ -50,7 +50,7 @@ smtcinit = False
 smtctop = None
 noinit = False
 so = SmtOpts()
-formulaOnly=true
+formulaOnly=True
 
 def usage():
     print("""
@@ -1344,7 +1344,7 @@ elif covermode:
             smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, step))
 
         while "1" in cover_mask:
-            if !formulaOnly:
+            if not formulaOnly:
                 print_msg("Checking cover reachability in step %d.." % (step))
                 smt_push()
                 smt_assert("(distinct (covers_%d s%d) #b%s)" % (coveridx, step, "0" * len(cover_desc)))
@@ -1469,7 +1469,7 @@ else:  # not tempind, covermode
                     print_msg("Checking assertions in step %d.." % (step))
                 else:
                     print_msg("Checking assertions in steps %d to %d.." % (step, last_check_step))
-                if !formulaOnly:
+                if not formulaOnly:
                     smt_push()
 
                     smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
@@ -1511,7 +1511,7 @@ else:  # not tempind, covermode
                         continue
 
                     print_msg("Checking final constraints in step %d.." % (i))
-                    if(!formulaOnly)
+                    if not formulaOnly:
                         smt_push()
 
                         smt_assert_consequent(get_constr_expr(constr_assumes, i, final=True))
