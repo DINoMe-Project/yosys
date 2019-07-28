@@ -183,10 +183,15 @@ bool is_reg_wire(RTLIL::SigSpec sig, std::string &reg_name)
 	return true;
 }
 
-void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int offset = 0, bool no_decimal = false, bool set_signed = false, bool escape_comment = false)
+void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int offset = 0, bool no_decimal = false, bool escape_comment = false)
 {
+	bool set_signed = (data.flags & RTLIL::CONST_FLAG_SIGNED) != 0;
 	if (width < 0)
 		width = data.bits.size() - offset;
+	if (width == 0) {
+		f << "\"\"";
+		return;
+	}
 	if (nostr)
 		goto dump_hex;
 	if ((data.flags & RTLIL::CONST_FLAG_STRING) == 0 || width != (int)data.bits.size()) {
@@ -217,7 +222,7 @@ void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int o
 				case RTLIL::S1: bin_digits.push_back('1'); break;
 				case RTLIL::Sx: bin_digits.push_back('x'); break;
 				case RTLIL::Sz: bin_digits.push_back('z'); break;
-				case RTLIL::Sa: bin_digits.push_back('z'); break;
+				case RTLIL::Sa: bin_digits.push_back('?'); break;
 				case RTLIL::Sm: log_error("Found marker state in final netlist.");
 				}
 			}
@@ -246,6 +251,12 @@ void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int o
 					hex_digits.push_back('z');
 					continue;
 				}
+				if (bit_3 == '?' || bit_2 == '?' || bit_1 == '?' || bit_0 == '?') {
+					if (bit_3 != '?' || bit_2 != '?' || bit_1 != '?' || bit_0 != '?')
+						goto dump_bin;
+					hex_digits.push_back('?');
+					continue;
+				}
 				int val = 8*(bit_3 - '0') + 4*(bit_2 - '0') + 2*(bit_1 - '0') + (bit_0 - '0');
 				hex_digits.push_back(val < 10 ? '0' + val : 'a' + val - 10);
 			}
@@ -265,13 +276,14 @@ void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int o
 				case RTLIL::S1: f << stringf("1"); break;
 				case RTLIL::Sx: f << stringf("x"); break;
 				case RTLIL::Sz: f << stringf("z"); break;
-				case RTLIL::Sa: f << stringf("z"); break;
+				case RTLIL::Sa: f << stringf("?"); break;
 				case RTLIL::Sm: log_error("Found marker state in final netlist.");
 				}
 			}
 		}
 	} else {
-		f << stringf("\"");
+		if ((data.flags & RTLIL::CONST_FLAG_REAL) == 0)
+			f << stringf("\"");
 		std::string str = data.decode_string();
 		for (size_t i = 0; i < str.size(); i++) {
 			if (str[i] == '\n')
@@ -289,7 +301,8 @@ void dump_const(std::ostream &f, const RTLIL::Const &data, int width = -1, int o
 			else
 				f << str[i];
 		}
-		f << stringf("\"");
+		if ((data.flags & RTLIL::CONST_FLAG_REAL) == 0)
+			f << stringf("\"");
 	}
 }
 
@@ -340,6 +353,10 @@ void dump_sigchunk(std::ostream &f, const RTLIL::SigChunk &chunk, bool no_decima
 
 void dump_sigspec(std::ostream &f, const RTLIL::SigSpec &sig)
 {
+	if (GetSize(sig) == 0) {
+		f << "\"\"";
+		return;
+	}
 	if (sig.is_chunk()) {
 		dump_sigchunk(f, sig.as_chunk());
 	} else {
@@ -353,20 +370,22 @@ void dump_sigspec(std::ostream &f, const RTLIL::SigSpec &sig)
 	}
 }
 
-void dump_attributes(std::ostream &f, std::string indent, dict<RTLIL::IdString, RTLIL::Const> &attributes, char term = '\n', bool modattr = false)
+void dump_attributes(std::ostream &f, std::string indent, dict<RTLIL::IdString, RTLIL::Const> &attributes, char term = '\n', bool modattr = false, bool as_comment = false)
 {
 	if (noattr)
 		return;
+	if (attr2comment)
+		as_comment = true;
 	for (auto it = attributes.begin(); it != attributes.end(); ++it) {
-		f << stringf("%s" "%s %s", indent.c_str(), attr2comment ? "/*" : "(*", id(it->first).c_str());
+		f << stringf("%s" "%s %s", indent.c_str(), as_comment ? "/*" : "(*", id(it->first).c_str());
 		f << stringf(" = ");
 		if (modattr && (it->second == Const(0, 1) || it->second == Const(0)))
 			f << stringf(" 0 ");
 		else if (modattr && (it->second == Const(1, 1) || it->second == Const(1)))
 			f << stringf(" 1 ");
 		else
-			dump_const(f, it->second, -1, 0, false, false, attr2comment);
-		f << stringf(" %s%c", attr2comment ? "*/" : "*)", term);
+			dump_const(f, it->second, -1, 0, false, as_comment);
+		f << stringf(" %s%c", as_comment ? "*/" : "*)", term);
 	}
 }
 
@@ -1234,6 +1253,118 @@ bool dump_cell_expr(std::ostream &f, std::string indent, RTLIL::Cell *cell)
 		return true;
 	}
 
+	if (cell->type.in("$assert", "$assume", "$cover"))
+	{
+		f << stringf("%s" "always @* if (", indent.c_str());
+		dump_sigspec(f, cell->getPort("\\EN"));
+		f << stringf(") %s(", cell->type.c_str()+1);
+		dump_sigspec(f, cell->getPort("\\A"));
+		f << stringf(");\n");
+		return true;
+	}
+
+	if (cell->type.in("$specify2", "$specify3"))
+	{
+		f << stringf("%s" "specify\n%s  ", indent.c_str(), indent.c_str());
+
+		SigSpec en = cell->getPort("\\EN");
+		if (en != State::S1) {
+			f << stringf("if (");
+			dump_sigspec(f, cell->getPort("\\EN"));
+			f << stringf(") ");
+		}
+
+		f << "(";
+		if (cell->type == "$specify3" && cell->getParam("\\EDGE_EN").as_bool())
+			f << (cell->getParam("\\EDGE_POL").as_bool() ? "posedge ": "negedge ");
+
+		dump_sigspec(f, cell->getPort("\\SRC"));
+
+		f << " ";
+		if (cell->getParam("\\SRC_DST_PEN").as_bool())
+			f << (cell->getParam("\\SRC_DST_POL").as_bool() ? "+": "-");
+		f << (cell->getParam("\\FULL").as_bool() ? "*> ": "=> ");
+
+		if (cell->type == "$specify3") {
+			f << "(";
+			dump_sigspec(f, cell->getPort("\\DST"));
+			f << " ";
+			if (cell->getParam("\\DAT_DST_PEN").as_bool())
+				f << (cell->getParam("\\DAT_DST_POL").as_bool() ? "+": "-");
+			f << ": ";
+			dump_sigspec(f, cell->getPort("\\DAT"));
+			f << ")";
+		} else {
+			dump_sigspec(f, cell->getPort("\\DST"));
+		}
+
+		bool bak_decimal = decimal;
+		decimal = 1;
+
+		f << ") = (";
+		dump_const(f, cell->getParam("\\T_RISE_MIN"));
+		f << ":";
+		dump_const(f, cell->getParam("\\T_RISE_TYP"));
+		f << ":";
+		dump_const(f, cell->getParam("\\T_RISE_MAX"));
+		f << ", ";
+		dump_const(f, cell->getParam("\\T_FALL_MIN"));
+		f << ":";
+		dump_const(f, cell->getParam("\\T_FALL_TYP"));
+		f << ":";
+		dump_const(f, cell->getParam("\\T_FALL_MAX"));
+		f << ");\n";
+
+		decimal = bak_decimal;
+
+		f << stringf("%s" "endspecify\n", indent.c_str());
+		return true;
+	}
+
+	if (cell->type == "$specrule")
+	{
+		f << stringf("%s" "specify\n%s  ", indent.c_str(), indent.c_str());
+
+		string spec_type = cell->getParam("\\TYPE").decode_string();
+		f << stringf("%s(", spec_type.c_str());
+
+		if (cell->getParam("\\SRC_PEN").as_bool())
+			f << (cell->getParam("\\SRC_POL").as_bool() ? "posedge ": "negedge ");
+		dump_sigspec(f, cell->getPort("\\SRC"));
+
+		if (cell->getPort("\\SRC_EN") != State::S1) {
+			f << " &&& ";
+			dump_sigspec(f, cell->getPort("\\SRC_EN"));
+		}
+
+		f << ", ";
+		if (cell->getParam("\\DST_PEN").as_bool())
+			f << (cell->getParam("\\DST_POL").as_bool() ? "posedge ": "negedge ");
+		dump_sigspec(f, cell->getPort("\\DST"));
+
+		if (cell->getPort("\\DST_EN") != State::S1) {
+			f << " &&& ";
+			dump_sigspec(f, cell->getPort("\\DST_EN"));
+		}
+
+		bool bak_decimal = decimal;
+		decimal = 1;
+
+		f << ", ";
+		dump_const(f, cell->getParam("\\T_LIMIT"));
+
+		if (spec_type == "$setuphold" || spec_type == "$recrem" || spec_type == "$fullskew") {
+			f << ", ";
+			dump_const(f, cell->getParam("\\T_LIMIT2"));
+		}
+
+		f << ");\n";
+		decimal = bak_decimal;
+
+		f << stringf("%s" "endspecify\n", indent.c_str());
+		return true;
+	}
+
 	// FIXME: $_SR_[PN][PN]_, $_DLATCH_[PN]_, $_DLATCHSR_[PN][PN][PN]_
 	// FIXME: $sr, $dlatch, $memrd, $memwr, $fsm
 
@@ -1256,8 +1387,7 @@ void dump_cell(std::ostream &f, std::string indent, RTLIL::Cell *cell)
 			if (it != cell->parameters.begin())
 				f << stringf(",");
 			f << stringf("\n%s  .%s(", indent.c_str(), id(it->first).c_str());
-			bool is_signed = (it->second.flags & RTLIL::CONST_FLAG_SIGNED) != 0;
-			dump_const(f, it->second, -1, 0, false, is_signed);
+			dump_const(f, it->second);
 			f << stringf(")");
 		}
 		f << stringf("\n%s" ")", indent.c_str());
@@ -1304,8 +1434,7 @@ void dump_cell(std::ostream &f, std::string indent, RTLIL::Cell *cell)
 	if (defparam && cell->parameters.size() > 0) {
 		for (auto it = cell->parameters.begin(); it != cell->parameters.end(); ++it) {
 			f << stringf("%sdefparam %s.%s = ", indent.c_str(), cell_name.c_str(), id(it->first).c_str());
-			bool is_signed = (it->second.flags & RTLIL::CONST_FLAG_SIGNED) != 0;
-			dump_const(f, it->second, -1, 0, false, is_signed);
+			dump_const(f, it->second);
 			f << stringf(";\n");
 		}
 	}
@@ -1371,12 +1500,14 @@ void dump_proc_switch(std::ostream &f, std::string indent, RTLIL::SwitchRule *sw
 		return;
 	}
 
+	dump_attributes(f, indent, sw->attributes);
 	f << stringf("%s" "casez (", indent.c_str());
 	dump_sigspec(f, sw->signal);
 	f << stringf(")\n");
 
 	bool got_default = false;
 	for (auto it = sw->cases.begin(); it != sw->cases.end(); ++it) {
+		dump_attributes(f, indent + "  ", (*it)->attributes, '\n', /*modattr=*/false, /*as_comment=*/true);
 		if ((*it)->compare.size() == 0) {
 			if (got_default)
 				continue;
@@ -1497,7 +1628,8 @@ void dump_module(std::ostream &f, std::string indent, RTLIL::Module *module)
 			SigSpec sig = active_sigmap(wire);
 			Const val = wire->attributes.at("\\init");
 			for (int i = 0; i < GetSize(sig) && i < GetSize(val); i++)
-				active_initdata[sig[i]] = val.bits.at(i);
+				if (val[i] == State::S0 || val[i] == State::S1)
+					active_initdata[sig[i]] = val[i];
 		}
 
 	if (!module->processes.empty())
@@ -1540,7 +1672,7 @@ void dump_module(std::ostream &f, std::string indent, RTLIL::Module *module)
 		}
 	}
 
-	dump_attributes(f, indent, module->attributes, '\n', true);
+	dump_attributes(f, indent, module->attributes, '\n', /*attr2comment=*/true);
 	f << stringf("%s" "module %s(", indent.c_str(), id(module->name, false).c_str());
 	bool keep_running = true;
 	for (int port_id = 1; keep_running; port_id++) {
@@ -1673,6 +1805,8 @@ struct VerilogBackend : public Backend {
 		bool blackboxes = false;
 		bool selected = false;
 
+		auto_name_map.clear();
+		reg_wires.clear();
 		reg_ct.clear();
 
 		reg_ct.insert("$dff");
@@ -1768,7 +1902,7 @@ struct VerilogBackend : public Backend {
 
 		*f << stringf("/* Generated by %s */\n", yosys_version_str);
 		for (auto it = design->modules_.begin(); it != design->modules_.end(); ++it) {
-			if (it->second->get_bool_attribute("\\blackbox") != blackboxes)
+			if (it->second->get_blackbox_attribute() != blackboxes)
 				continue;
 			if (selected && !design->selected_whole_module(it->first)) {
 				if (design->selected_module(it->first))
@@ -1779,6 +1913,8 @@ struct VerilogBackend : public Backend {
 			dump_module(*f, "", it->second);
 		}
 
+		auto_name_map.clear();
+		reg_wires.clear();
 		reg_ct.clear();
 	}
 } VerilogBackend;

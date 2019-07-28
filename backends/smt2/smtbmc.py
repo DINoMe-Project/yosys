@@ -1471,7 +1471,6 @@ else:  # not tempind, covermode
                     print_msg("Checking assertions in steps %d to %d.." % (step, last_check_step))
                 if not formulaOnly:
                     smt_push()
-
                     smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
                             [get_constr_expr(constr_asserts, i) for i in range(step, last_check_step+1)]))
 
@@ -1485,8 +1484,8 @@ else:  # not tempind, covermode
                                 smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
                                 smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
                                 smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
-                                smt_assert_consequent(get_constr_expr(constr_assumes, i))
-                        print_msg("Re-solving with appended steps..")
+                                smt_assert_consequent( get_constr_expr(constr_assumes, i))
+                            print_msg("Re-solving with appended steps..")
                         if smt_check_sat() == "unsat":
                             print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
                             retstatus = False
@@ -1497,7 +1496,6 @@ else:  # not tempind, covermode
                         write_trace(0, last_check_step+1+append_steps, '%')
                         retstatus = False
                         break
-
                     smt_pop()
 
             if (constr_final_start is not None) or (last_check_step+1 != num_steps):

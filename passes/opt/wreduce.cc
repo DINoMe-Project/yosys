@@ -29,6 +29,7 @@ PRIVATE_NAMESPACE_BEGIN
 struct WreduceConfig
 {
 	pool<IdString> supported_cell_types;
+	bool keepdc = false;
 
 	WreduceConfig()
 	{
@@ -54,6 +55,7 @@ struct WreduceWorker
 	std::set<SigBit> work_queue_bits;
 	pool<SigBit> keep_bits;
 	dict<SigBit, State> init_bits;
+	pool<SigBit> remove_init_bits;
 
 	WreduceWorker(WreduceConfig *config, Module *module) :
 			config(config), module(module), mi(module) { }
@@ -81,7 +83,7 @@ struct WreduceWorker
 
 			SigBit ref = sig_a[i];
 			for (int k = 0; k < GetSize(sig_s); k++) {
-				if (ref != Sx && sig_b[k*GetSize(sig_a) + i] != Sx && ref != sig_b[k*GetSize(sig_a) + i])
+				if ((config->keepdc || (ref != Sx && sig_b[k*GetSize(sig_a) + i] != Sx)) && ref != sig_b[k*GetSize(sig_a) + i])
 					goto no_match_ab;
 				if (sig_b[k*GetSize(sig_a) + i] != Sx)
 					ref = sig_b[k*GetSize(sig_a) + i];
@@ -164,6 +166,7 @@ struct WreduceWorker
 		{
 			if (zero_ext && sig_d[i] == State::S0 && (initval[i] == State::S0 || initval[i] == State::Sx)) {
 				module->connect(sig_q[i], State::S0);
+				remove_init_bits.insert(sig_q[i]);
 				sig_d.remove(i);
 				sig_q.remove(i);
 				continue;
@@ -171,13 +174,17 @@ struct WreduceWorker
 
 			if (sign_ext && i > 0 && sig_d[i] == sig_d[i-1] && initval[i] == initval[i-1]) {
 				module->connect(sig_q[i], sig_q[i-1]);
+				remove_init_bits.insert(sig_q[i]);
 				sig_d.remove(i);
 				sig_q.remove(i);
 				continue;
 			}
 
 			auto info = mi.query(sig_q[i]);
+			if (info == nullptr)
+				return;
 			if (!info->is_output && GetSize(info->ports) == 1 && !keep_bits.count(mi.sigmap(sig_q[i]))) {
+				remove_init_bits.insert(sig_q[i]);
 				sig_d.remove(i);
 				sig_q.remove(i);
 				zero_ext = false;
@@ -387,13 +394,16 @@ struct WreduceWorker
 
 	void run()
 	{
+		// create a copy as mi.sigmap will be updated as we process the module
+		SigMap init_attr_sigmap = mi.sigmap;
+
 		for (auto w : module->wires()) {
 			if (w->get_bool_attribute("\\keep"))
 				for (auto bit : mi.sigmap(w))
 					keep_bits.insert(bit);
 			if (w->attributes.count("\\init")) {
 				Const initval = w->attributes.at("\\init");
-				SigSpec initsig = mi.sigmap(w);
+				SigSpec initsig = init_attr_sigmap(w);
 				int width = std::min(GetSize(initval), GetSize(initsig));
 				for (int i = 0; i < width; i++)
 					init_bits[initsig[i]] = initval[i];
@@ -446,6 +456,22 @@ struct WreduceWorker
 			module->connect(nw, SigSpec(w).extract(0, GetSize(nw)));
 			module->swap_names(w, nw);
 		}
+
+		if (!remove_init_bits.empty()) {
+			for (auto w : module->wires()) {
+				if (w->attributes.count("\\init")) {
+					Const initval = w->attributes.at("\\init");
+					Const new_initval(State::Sx, GetSize(w));
+					SigSpec initsig = init_attr_sigmap(w);
+					int width = std::min(GetSize(initval), GetSize(initsig));
+					for (int i = 0; i < width; i++) {
+						if (!remove_init_bits.count(initsig[i]))
+							new_initval[i] = initval[i];
+					}
+					w->attributes.at("\\init") = new_initval;
+				}
+			}
+		}
 	}
 };
 
@@ -470,6 +496,9 @@ struct WreducePass : public Pass {
 		log("        Do not change the width of memory address ports. Use this options in\n");
 		log("        flows that use the 'memory_memx' pass.\n");
 		log("\n");
+		log("    -keepdc\n");
+		log("        Do not optimize explicit don't-care values.\n");
+		log("\n");
 	}
 	void execute(std::vector<std::string> args, Design *design) YS_OVERRIDE
 	{
@@ -482,6 +511,10 @@ struct WreducePass : public Pass {
 		for (argidx = 1; argidx < args.size(); argidx++) {
 			if (args[argidx] == "-memx") {
 				opt_memx = true;
+				continue;
+			}
+			if (args[argidx] == "-keepdc") {
+				config.keepdc = true;
 				continue;
 			}
 			break;
@@ -506,6 +539,42 @@ struct WreducePass : public Pass {
 						module->connect(sig, Const(0, GetSize(sig)));
 					}
 				}
+
+				if (c->type.in("$div", "$mod", "$pow"))
+				{
+					SigSpec A = c->getPort("\\A");
+					int original_a_width = GetSize(A);
+					if (c->getParam("\\A_SIGNED").as_bool()) {
+						while (GetSize(A) > 1 && A[GetSize(A)-1] == State::S0 && A[GetSize(A)-2] == State::S0)
+							A.remove(GetSize(A)-1, 1);
+					} else {
+						while (GetSize(A) > 0 && A[GetSize(A)-1] == State::S0)
+							A.remove(GetSize(A)-1, 1);
+					}
+					if (original_a_width != GetSize(A)) {
+						log("Removed top %d bits (of %d) from port A of cell %s.%s (%s).\n",
+								original_a_width-GetSize(A), original_a_width, log_id(module), log_id(c), log_id(c->type));
+						c->setPort("\\A", A);
+						c->setParam("\\A_WIDTH", GetSize(A));
+					}
+
+					SigSpec B = c->getPort("\\B");
+					int original_b_width = GetSize(B);
+					if (c->getParam("\\B_SIGNED").as_bool()) {
+						while (GetSize(B) > 1 && B[GetSize(B)-1] == State::S0 && B[GetSize(B)-2] == State::S0)
+							B.remove(GetSize(B)-1, 1);
+					} else {
+						while (GetSize(B) > 0 && B[GetSize(B)-1] == State::S0)
+							B.remove(GetSize(B)-1, 1);
+					}
+					if (original_b_width != GetSize(B)) {
+						log("Removed top %d bits (of %d) from port B of cell %s.%s (%s).\n",
+								original_b_width-GetSize(B), original_b_width, log_id(module), log_id(c), log_id(c->type));
+						c->setPort("\\B", B);
+						c->setParam("\\B_WIDTH", GetSize(B));
+					}
+				}
+
 				if (!opt_memx && c->type.in("$memrd", "$memwr", "$meminit")) {
 					IdString memid = c->getParam("\\MEMID").decode_string();
 					RTLIL::Memory *mem = module->memories.at(memid);

@@ -27,18 +27,27 @@ module SB_IO (
 	reg dout_q_0, dout_q_1;
 	reg outena_q;
 
+	// IO tile generates a constant 1'b1 internally if global_cen is not connected
+	wire clken_pulled = CLOCK_ENABLE || CLOCK_ENABLE === 1'bz;
+	reg  clken_pulled_ri;
+	reg  clken_pulled_ro;
+
 	generate if (!NEG_TRIGGER) begin
-		always @(posedge INPUT_CLK)  if (CLOCK_ENABLE) din_q_0  <= PACKAGE_PIN;
-		always @(negedge INPUT_CLK)  if (CLOCK_ENABLE) din_q_1  <= PACKAGE_PIN;
-		always @(posedge OUTPUT_CLK) if (CLOCK_ENABLE) dout_q_0 <= D_OUT_0;
-		always @(negedge OUTPUT_CLK) if (CLOCK_ENABLE) dout_q_1 <= D_OUT_1;
-		always @(posedge OUTPUT_CLK) if (CLOCK_ENABLE) outena_q <= OUTPUT_ENABLE;
+		always @(posedge INPUT_CLK)                       clken_pulled_ri <= clken_pulled;
+		always @(posedge INPUT_CLK)  if (clken_pulled)    din_q_0         <= PACKAGE_PIN;
+		always @(negedge INPUT_CLK)  if (clken_pulled_ri) din_q_1         <= PACKAGE_PIN;
+		always @(posedge OUTPUT_CLK)                      clken_pulled_ro <= clken_pulled;
+		always @(posedge OUTPUT_CLK) if (clken_pulled)    dout_q_0        <= D_OUT_0;
+		always @(negedge OUTPUT_CLK) if (clken_pulled_ro) dout_q_1        <= D_OUT_1;
+		always @(posedge OUTPUT_CLK) if (clken_pulled)    outena_q        <= OUTPUT_ENABLE;
 	end else begin
-		always @(negedge INPUT_CLK)  if (CLOCK_ENABLE) din_q_0  <= PACKAGE_PIN;
-		always @(posedge INPUT_CLK)  if (CLOCK_ENABLE) din_q_1  <= PACKAGE_PIN;
-		always @(negedge OUTPUT_CLK) if (CLOCK_ENABLE) dout_q_0 <= D_OUT_0;
-		always @(posedge OUTPUT_CLK) if (CLOCK_ENABLE) dout_q_1 <= D_OUT_1;
-		always @(negedge OUTPUT_CLK) if (CLOCK_ENABLE) outena_q <= OUTPUT_ENABLE;
+		always @(negedge INPUT_CLK)                       clken_pulled_ri <= clken_pulled;
+		always @(negedge INPUT_CLK)  if (clken_pulled)    din_q_0         <= PACKAGE_PIN;
+		always @(posedge INPUT_CLK)  if (clken_pulled_ri) din_q_1         <= PACKAGE_PIN;
+		always @(negedge OUTPUT_CLK)                      clken_pulled_ro <= clken_pulled;
+		always @(negedge OUTPUT_CLK) if (clken_pulled)    dout_q_0        <= D_OUT_0;
+		always @(posedge OUTPUT_CLK) if (clken_pulled_ro) dout_q_1        <= D_OUT_1;
+		always @(negedge OUTPUT_CLK) if (clken_pulled)    outena_q        <= OUTPUT_ENABLE;
 	end endgenerate
 
 	always @* begin
@@ -118,6 +127,7 @@ endmodule
 
 // SiliconBlue Logic Cells
 
+(* abc_box_id = 2, lib_whitebox *)
 module SB_LUT4 (output O, input I0, I1, I2, I3);
 	parameter [15:0] LUT_INIT = 0;
 	wire [7:0] s3 = I3 ? LUT_INIT[15:8] : LUT_INIT[7:0];
@@ -126,6 +136,7 @@ module SB_LUT4 (output O, input I0, I1, I2, I3);
 	assign O = I0 ? s1[1] : s1[0];
 endmodule
 
+(* abc_box_id = 1, abc_carry="CI,CO", lib_whitebox *)
 module SB_CARRY (output CO, input I0, I1, CI);
 	assign CO = (I0 && I1) || ((I0 || I1) && CI);
 endmodule
@@ -326,6 +337,8 @@ module SB_RAM40_4K (
 	parameter INIT_E = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 	parameter INIT_F = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 
+	parameter INIT_FILE = "";
+
 `ifndef BLACKBOX
 	wire [15:0] WMASK_I;
 	wire [15:0] RMASK_I;
@@ -408,43 +421,27 @@ module SB_RAM40_4K (
 	reg [15:0] memory [0:255];
 
 	initial begin
-		for (i=0; i<16; i=i+1) begin
-`ifdef YOSYS
-			memory[ 0*16 + i] <= INIT_0[16*i +: 16];
-			memory[ 1*16 + i] <= INIT_1[16*i +: 16];
-			memory[ 2*16 + i] <= INIT_2[16*i +: 16];
-			memory[ 3*16 + i] <= INIT_3[16*i +: 16];
-			memory[ 4*16 + i] <= INIT_4[16*i +: 16];
-			memory[ 5*16 + i] <= INIT_5[16*i +: 16];
-			memory[ 6*16 + i] <= INIT_6[16*i +: 16];
-			memory[ 7*16 + i] <= INIT_7[16*i +: 16];
-			memory[ 8*16 + i] <= INIT_8[16*i +: 16];
-			memory[ 9*16 + i] <= INIT_9[16*i +: 16];
-			memory[10*16 + i] <= INIT_A[16*i +: 16];
-			memory[11*16 + i] <= INIT_B[16*i +: 16];
-			memory[12*16 + i] <= INIT_C[16*i +: 16];
-			memory[13*16 + i] <= INIT_D[16*i +: 16];
-			memory[14*16 + i] <= INIT_E[16*i +: 16];
-			memory[15*16 + i] <= INIT_F[16*i +: 16];
-`else
-			memory[ 0*16 + i] = INIT_0[16*i +: 16];
-			memory[ 1*16 + i] = INIT_1[16*i +: 16];
-			memory[ 2*16 + i] = INIT_2[16*i +: 16];
-			memory[ 3*16 + i] = INIT_3[16*i +: 16];
-			memory[ 4*16 + i] = INIT_4[16*i +: 16];
-			memory[ 5*16 + i] = INIT_5[16*i +: 16];
-			memory[ 6*16 + i] = INIT_6[16*i +: 16];
-			memory[ 7*16 + i] = INIT_7[16*i +: 16];
-			memory[ 8*16 + i] = INIT_8[16*i +: 16];
-			memory[ 9*16 + i] = INIT_9[16*i +: 16];
-			memory[10*16 + i] = INIT_A[16*i +: 16];
-			memory[11*16 + i] = INIT_B[16*i +: 16];
-			memory[12*16 + i] = INIT_C[16*i +: 16];
-			memory[13*16 + i] = INIT_D[16*i +: 16];
-			memory[14*16 + i] = INIT_E[16*i +: 16];
-			memory[15*16 + i] = INIT_F[16*i +: 16];
-`endif
-		end
+		if (INIT_FILE != "")
+			$readmemh(INIT_FILE, memory);
+		else
+			for (i=0; i<16; i=i+1) begin
+				memory[ 0*16 + i] = INIT_0[16*i +: 16];
+				memory[ 1*16 + i] = INIT_1[16*i +: 16];
+				memory[ 2*16 + i] = INIT_2[16*i +: 16];
+				memory[ 3*16 + i] = INIT_3[16*i +: 16];
+				memory[ 4*16 + i] = INIT_4[16*i +: 16];
+				memory[ 5*16 + i] = INIT_5[16*i +: 16];
+				memory[ 6*16 + i] = INIT_6[16*i +: 16];
+				memory[ 7*16 + i] = INIT_7[16*i +: 16];
+				memory[ 8*16 + i] = INIT_8[16*i +: 16];
+				memory[ 9*16 + i] = INIT_9[16*i +: 16];
+				memory[10*16 + i] = INIT_A[16*i +: 16];
+				memory[11*16 + i] = INIT_B[16*i +: 16];
+				memory[12*16 + i] = INIT_C[16*i +: 16];
+				memory[13*16 + i] = INIT_D[16*i +: 16];
+				memory[14*16 + i] = INIT_E[16*i +: 16];
+				memory[15*16 + i] = INIT_F[16*i +: 16];
+			end
 	end
 
 	always @(posedge WCLK) begin
@@ -504,6 +501,8 @@ module SB_RAM40_4KNR (
 	parameter INIT_E = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 	parameter INIT_F = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 
+	parameter INIT_FILE = "";
+
 	SB_RAM40_4K #(
 		.WRITE_MODE(WRITE_MODE),
 		.READ_MODE (READ_MODE ),
@@ -522,7 +521,8 @@ module SB_RAM40_4KNR (
 		.INIT_C    (INIT_C    ),
 		.INIT_D    (INIT_D    ),
 		.INIT_E    (INIT_E    ),
-		.INIT_F    (INIT_F    )
+		.INIT_F    (INIT_F    ),
+		.INIT_FILE (INIT_FILE )
 	) RAM (
 		.RDATA(RDATA),
 		.RCLK (~RCLKN),
@@ -566,6 +566,8 @@ module SB_RAM40_4KNW (
 	parameter INIT_E = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 	parameter INIT_F = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 
+	parameter INIT_FILE = "";
+
 	SB_RAM40_4K #(
 		.WRITE_MODE(WRITE_MODE),
 		.READ_MODE (READ_MODE ),
@@ -584,7 +586,8 @@ module SB_RAM40_4KNW (
 		.INIT_C    (INIT_C    ),
 		.INIT_D    (INIT_D    ),
 		.INIT_E    (INIT_E    ),
-		.INIT_F    (INIT_F    )
+		.INIT_F    (INIT_F    ),
+		.INIT_FILE (INIT_FILE )
 	) RAM (
 		.RDATA(RDATA),
 		.RCLK (RCLK ),
@@ -628,6 +631,8 @@ module SB_RAM40_4KNRNW (
 	parameter INIT_E = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 	parameter INIT_F = 256'h0000000000000000000000000000000000000000000000000000000000000000;
 
+	parameter INIT_FILE = "";
+
 	SB_RAM40_4K #(
 		.WRITE_MODE(WRITE_MODE),
 		.READ_MODE (READ_MODE ),
@@ -646,7 +651,8 @@ module SB_RAM40_4KNRNW (
 		.INIT_C    (INIT_C    ),
 		.INIT_D    (INIT_D    ),
 		.INIT_E    (INIT_E    ),
-		.INIT_F    (INIT_F    )
+		.INIT_F    (INIT_F    ),
+		.INIT_FILE (INIT_FILE )
 	) RAM (
 		.RDATA(RDATA),
 		.RCLK (~RCLKN),
@@ -926,10 +932,21 @@ endmodule
 
 (* blackbox *)
 module SB_HFOSC(
+	input TRIM0,
+	input TRIM1,
+	input TRIM2,
+	input TRIM3,
+	input TRIM4,
+	input TRIM5,
+	input TRIM6,
+	input TRIM7,
+	input TRIM8,
+	input TRIM9,
 	input CLKHFPU,
 	input CLKHFEN,
 	output CLKHF
 );
+parameter TRIM_EN = "0b0";
 parameter CLKHF_DIV = "0b00";
 endmodule
 
@@ -948,6 +965,30 @@ module SB_RGBA_DRV(
 	input RGB0PWM,
 	input RGB1PWM,
 	input RGB2PWM,
+	output RGB0,
+	output RGB1,
+	output RGB2
+);
+parameter CURRENT_MODE = "0b0";
+parameter RGB0_CURRENT = "0b000000";
+parameter RGB1_CURRENT = "0b000000";
+parameter RGB2_CURRENT = "0b000000";
+endmodule
+
+(* blackbox *)
+module SB_LED_DRV_CUR(
+	input EN,
+	output LEDPU
+);
+endmodule
+
+(* blackbox *)
+module SB_RGB_DRV(
+	input RGBLEDEN,
+	input RGB0PWM,
+	input RGB1PWM,
+	input RGB2PWM,
+	input RGBPU,
 	output RGB0,
 	output RGB1,
 	output RGB2
