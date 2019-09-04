@@ -18,7 +18,6 @@
  */
 
 #include "kernel/yosys.h"
-
 #ifndef RTLIL_H
 #define RTLIL_H
 
@@ -34,6 +33,7 @@ namespace RTLIL
 		Sa = 4, // don't care (used only in cases)
 		Sm = 5  // marker (used internally by some passes)
 	};
+
 
 	enum SyncType : unsigned char {
 		ST0 = 0, // level sensitive: 0
@@ -452,53 +452,6 @@ namespace RTLIL
 	};
 };
 
-struct RTLIL::Const
-{
-	int flags;
-	std::vector<RTLIL::State> bits;
-
-	Const();
-	Const(std::string str);
-	Const(int val, int width = 32);
-	Const(RTLIL::State bit, int width = 1);
-	Const(const std::vector<RTLIL::State> &bits) : bits(bits) { flags = CONST_FLAG_NONE; }
-	Const(const std::vector<bool> &bits);
-
-	bool operator <(const RTLIL::Const &other) const;
-	bool operator ==(const RTLIL::Const &other) const;
-	bool operator !=(const RTLIL::Const &other) const;
-
-	bool as_bool() const;
-	int as_int(bool is_signed = false) const;
-	std::string as_string() const;
-	static Const from_string(std::string str);
-
-	std::string decode_string() const;
-
-	inline int size() const { return bits.size(); }
-	inline RTLIL::State &operator[](int index) { return bits.at(index); }
-	inline const RTLIL::State &operator[](int index) const { return bits.at(index); }
-
-	bool is_fully_zero() const;
-	bool is_fully_ones() const;
-	bool is_fully_def() const;
-	bool is_fully_undef() const;
-
-	inline RTLIL::Const extract(int offset, int len = 1, RTLIL::State padding = RTLIL::State::S0) const {
-		RTLIL::Const ret;
-		ret.bits.reserve(len);
-		for (int i = offset; i < offset + len; i++)
-			ret.bits.push_back(i < GetSize(bits) ? bits[i] : padding);
-		return ret;
-	}
-
-	inline unsigned int hash() const {
-		unsigned int h = mkhash_init;
-		for (auto b : bits)
-			mkhash(h, b);
-		return h;
-	}
-};
 
 struct RTLIL::AttrObject
 {
@@ -558,6 +511,54 @@ struct RTLIL::SigBit
 	bool operator ==(const RTLIL::SigBit &other) const;
 	bool operator !=(const RTLIL::SigBit &other) const;
 	unsigned int hash() const;
+};
+
+struct RTLIL::Const
+{
+	int flags;
+	std::vector<RTLIL::State> bits;
+
+	Const();
+	Const(std::string str);
+	Const(int val, int width = 32);
+	Const(RTLIL::State bit, int width = 1);
+	Const(const std::vector<RTLIL::State> &bits) : bits(bits) { flags = CONST_FLAG_NONE; }
+	Const(const std::vector<bool> &bits);
+
+	bool operator <(const RTLIL::Const &other) const;
+	bool operator ==(const RTLIL::Const &other) const;
+	bool operator !=(const RTLIL::Const &other) const;
+
+	bool as_bool() const;
+	int as_int(bool is_signed = false) const;
+	std::string as_string() const;
+	static Const from_string(std::string str);
+
+	std::string decode_string() const;
+
+	inline int size() const { return bits.size(); }
+	inline RTLIL::State &operator[](int index) { return bits.at(index); }
+	inline const RTLIL::State &operator[](int index) const { return bits.at(index); }
+
+	bool is_fully_zero() const;
+	bool is_fully_ones() const;
+	bool is_fully_def() const;
+	bool is_fully_undef() const;
+
+	inline RTLIL::Const extract(int offset, int len = 1, RTLIL::State padding = RTLIL::State::S0) const {
+		RTLIL::Const ret;
+		ret.bits.reserve(len);
+		for (int i = offset; i < offset + len; i++)
+			ret.bits.push_back(i < GetSize(bits) ? bits[i] : padding);
+		return ret;
+	}
+
+	inline unsigned int hash() const {
+		unsigned int h = mkhash_init;
+		for (auto b : bits)
+			mkhash(h, b);
+		return h;
+	}
 };
 
 struct RTLIL::SigSpecIterator : public std::iterator<std::input_iterator_tag, RTLIL::SigSpec>

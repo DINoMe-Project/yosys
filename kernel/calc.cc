@@ -87,13 +87,6 @@ static RTLIL::Const big2const(const BigInteger &val, int result_len, int undef_b
 				result.bits[i] = mag.getBit(i) ? RTLIL::State::S1 : RTLIL::State::S0;
 		}
 	}
-
-#if 0
-	if (undef_bit_pos >= 0)
-		for (int i = undef_bit_pos; i < result_len; i++)
-			result.bits[i] = RTLIL::State::Sx;
-#endif
-
 	return result;
 }
 
@@ -583,4 +576,3 @@ RTLIL::Const RTLIL::const_neg(const RTLIL::Const &arg1, const RTLIL::Const&, boo
 }
 
 YOSYS_NAMESPACE_END
-

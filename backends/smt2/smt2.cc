@@ -1492,6 +1492,7 @@ struct Smt2Backend : public Backend {
 		// extract module dependencies
 		std::map<RTLIL::Module*, std::set<RTLIL::Module*>> module_deps;
 		for (auto &mod_it : design->modules_) {
+			log("module size=%d\n",mod_it.second->cells().size());
 			module_deps[mod_it.second] = std::set<RTLIL::Module*>();
 			for (auto &cell_it : mod_it.second->cells_)
 				if (design->modules_.count(cell_it.second->type) > 0)

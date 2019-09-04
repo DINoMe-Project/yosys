@@ -170,7 +170,6 @@ struct SimInstance
 				Cell *cell = it.first;
 				ff_state_t &ff = it.second;
 				zinit(ff.past_d);
-
 				SigSpec qsig = cell->getPort("\\Q");
 				Const qdata = get_state(qsig);
 				zinit(qdata);

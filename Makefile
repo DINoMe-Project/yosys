@@ -1,5 +1,5 @@
 
-CONFIG := clang
+CONFIG := clang -v
 # CONFIG := gcc
 # CONFIG := gcc-4.8
 # CONFIG := emcc
@@ -421,6 +421,7 @@ $(eval $(call add_include_file,kernel/modtools.h))
 $(eval $(call add_include_file,kernel/macc.h))
 $(eval $(call add_include_file,kernel/utils.h))
 $(eval $(call add_include_file,kernel/satgen.h))
+$(eval $(call add_include_file,kernel/calc_sym.h))
 $(eval $(call add_include_file,libs/ezsat/ezsat.h))
 $(eval $(call add_include_file,libs/ezsat/ezminisat.h))
 $(eval $(call add_include_file,libs/sha1/sha1.h))
@@ -428,7 +429,7 @@ $(eval $(call add_include_file,passes/fsm/fsmdata.h))
 $(eval $(call add_include_file,frontends/ast/ast.h))
 $(eval $(call add_include_file,backends/ilang/ilang_backend.h))
 
-OBJS += kernel/driver.o kernel/register.o kernel/rtlil.o kernel/log.o kernel/calc.o kernel/yosys.o
+OBJS += kernel/driver.o kernel/register.o kernel/rtlil.o kernel/log.o kernel/calc.o kernel/calc_sym.o kernel/yosys.o
 OBJS += kernel/cellaigs.o kernel/celledges.o
 
 kernel/log.o: CXXFLAGS += -DYOSYS_SRC='"$(YOSYS_SRC)"'
@@ -496,14 +497,14 @@ yosys.js: $(filter-out yosysjs-$(YOSYS_VER).zip,$(EXTRA_TARGETS))
 endif
 
 yosys$(EXE): $(OBJS)
-	$(P) $(LD) -o yosys$(EXE) $(LDFLAGS) $(OBJS) $(LDLIBS)
+	$(P) $(LD) -o yosys$(EXE) $(LDFLAGS) $(OBJS) $(LDLIBS) -L/usr/local/lib/ -lz3
 
 libyosys.so: $(filter-out kernel/driver.o,$(OBJS))
 	$(P) $(LD) -o libyosys.so -shared -Wl,-soname,libyosys.so $(LDFLAGS) $^ $(LDLIBS)
 
 %.o: %.cc
 	$(Q) mkdir -p $(dir $@)
-	$(P) $(CXX) -o $@ -c $(CPPFLAGS) $(CXXFLAGS) $<
+	$(P) $(CXX) -o $@ -c $(CPPFLAGS) $(CXXFLAGS)  $<
 
 %.o: %.cpp
 	$(Q) mkdir -p $(dir $@)
@@ -773,4 +774,3 @@ echo-git-rev:
 
 .PHONY: all top-all abc test install install-abc manual clean mrproper qtcreator coverage vcxsrc mxebin
 .PHONY: config-clean config-clang config-gcc config-gcc-static config-gcc-4.8 config-gprof config-sudo
-
