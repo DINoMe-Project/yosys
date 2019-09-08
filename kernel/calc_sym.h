@@ -18,22 +18,32 @@ static bool prove(const z3::expr &e) {
   s.add(!e);
   return (s.check() == z3::unsat);
 }
-static z3::expr bit_const(const char* name){
-  return z3_context.bv_const(name,1);
+static z3::expr bit_const(const char *name) {
+  return z3_context.bv_const(name, 1);
 }
-static z3::expr bit_val(bool val){
-  return z3_context.bv_val(1,&val);
+static z3::expr bit_const() {
+  return z3_context.bv_const(stringf("auto#%d", name_index++).c_str(), 1);
 }
-static bool is_false(z3::expr val){
-  if(val.is_bv() && val.is_app()){
-    return  val.get_numeral_int()==0 ;
+static z3::expr bit_val(bool val) { return z3_context.bv_val(1, &val); }
+static bool is_false(z3::expr val) {
+  //  std::cerr << "is_f";
+  if (val.is_bv() && val.is_app() && val.is_numeral()) {
+    //    std::cerr << "is_ffinish";
+    return val.get_numeral_int() == 0;
   }
+  //  std::cerr << "is_F finish";
   return false;
 }
-static bool is_true(z3::expr val){
-  if(val.is_bv() && val.is_app()){
-    return  val.get_numeral_int()==1 ;
+static bool is_true(z3::expr val) {
+  bool ret = false;
+  //  std::cerr << "is_true";
+  if (val.is_bv() && val.is_app() && val.is_numeral()) {
+    //  std::cerr << "is_true finish1 " << val << "\n";
+    ret = val.get_numeral_int() == 1;
+    //  std::cerr << "is_true finish11";
+    return ret;
   }
+  //  std::cerr << "is_true finish2";
   return false;
 }
 class StateSym {
@@ -64,48 +74,8 @@ public:
       val_ = bit_const(log_signal(b));
     }
   }
-  std::string to_string() const {
-    return val_.to_string();
-    switch (op_) {
-    case Type::Const:
-      return stringf("%s", val_.to_string().c_str());
-    case Type::And:
-      assert(operands_.size() == 2);
-      return stringf("(and %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Or:
-      assert(operands_.size() == 2);
-      return stringf("(or %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Xor:
-      assert(operands_.size() == 2);
-      return stringf("(xor %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Not:
-      assert(operands_.size() == 1);
-      return stringf("(not %s)", operands_[0].str().c_str());
-    case Type::Sym:
-      assert(operands_.size() == 0);
-      return stringf("(%s)", log_signal(bit_));
-    case Type::Lt:
-      assert(operands_.size() == 2);
-      return stringf("(< %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Gt:
-      assert(operands_.size() == 2);
-      return stringf("(> %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Eq:
-      return stringf("(== %s %s)", operands_[0].str().c_str(),
-                     operands_[1].str().c_str());
-    case Type::Mux:
-      assert(operands_.size() == 3);
-      return stringf("(ite %s %s %s)", operands_[2].str().c_str(),
-                     operands_[0].str().c_str(), operands_[1].str().c_str());
-    default:
-      return "(unknown)";
-    }
-  }
+  std::string to_string() const { return val_.simplify().to_string(); }
+  const z3::expr &to_expr() const { return val_.simplify(); }
   std::string str() const { return to_string(); }
   StateSym(const State &state, const SigBit &b) : val_(bit_val(0)) {
     op_ = Type::Const;
@@ -118,9 +88,12 @@ public:
     default:
       op_ = Type::Sym;
       val_ = bit_const(log_signal(b));
-      bit_ = b;
       break;
     }
+  }
+  StateSym(const z3::expr &e) : val_(bit_val(0)) {
+    assert(e.get_sort().bv_size() == 1);
+    val_ = e;
   }
   StateSym(const State &state) : val_(bit_val(0)) {
     SigBit b;
@@ -153,7 +126,7 @@ public:
       std::cerr << stringf(" %s", aa.val_.to_string().c_str());
     }*/
     StateSym state_sym;
-    state_sym.op_ = op;
+    // state_sym.op_ = op;
     state_sym.operands_ = a;
     switch (state_sym.op_) {
     case Type::And:
@@ -186,7 +159,7 @@ public:
       break;
     case Type::Mux:
       assert(a.size() == 3);
-      state_sym.val_ = z3::ite(a[2].val_==1, a[1].val_, a[0].val_);
+      state_sym.val_ = z3::ite(a[2].val_ == 1, a[1].val_, a[0].val_);
       break;
     default:
       assert(false);
@@ -196,9 +169,13 @@ public:
 
     return state_sym;
   }
-  RTLIL::State to_state() {
-    return is_true(val_) ? State::S1
-                          : (is_false(val_) ? State::S0 : State::Sx);
+  RTLIL::State to_state() const {
+    //    std::cerr << "to state start";
+    RTLIL::State s =
+        is_true(val_) ? State::S1 : (is_false(val_) ? State::S0 : State::Sx);
+
+    //    std::cerr << "to state finish";
+    return s;
   }
 #define CreateOp(_OP, _TYPE)                                                   \
   static StateSym Create##_OP(const vector<StateSym> &a) {                     \
@@ -228,11 +205,10 @@ public:
   CreateOp2(Eq, Type::Eq);
   CreateOpSingle(Not, Type::Not);
   bool operator==(const State &other) const {
-  //  std::cerr << "==" << val_ << "\n";
-    if (op_ == Type::Const) {
-      assert(val_.is_bv() && val_.is_app());
+    //  std::cerr << "==" << val_ << "\n";
+    if (val_.is_bv() && val_.is_app()) {
       if (other == State::S0)
-        return  is_false(val_) ;
+        return is_false(val_);
       return is_true(val_);
     } else {
       return false;
@@ -240,94 +216,96 @@ public:
   }
   bool operator==(const StateSym &other) const {
     return (other.val_.to_string() == val_.to_string());
-    /*  if (other.op_ != op_)
-        return false;
-      if (op_ != Type::Sym && other.val_ != val_)
-        return false;
-      if (op_ == Type::Sym) {
-        // log("sym %s %s return %d\n",other.str().c_str(),
-        // this->str().c_str(),other.bit_ == bit_);
-        return other.val_ == val_;
-      }
-      if (other.operands_.size() == 0 && operands_.size() == 0)
-        return true;
-      for (size_t i = 0; i < operands_.size(); ++i) {
-        if (not(other.operands_[i] == operands_[i])) {
-          return false;
-        }
-      }
-      return true;*/
   }
   bool operator!=(const StateSym &other) const { return !(other == *this); }
-  bool is_const() const { return op_ == Type::Const; }
+  bool is_const() const { return val_.is_bv() && val_.is_app(); }
 }; // namespace RTLIL
 
 struct SymConst {
   int flags;
-  std::vector<RTLIL::StateSym> bits;
-  std::vector<RTLIL::SymConst> operands_;
+  z3::expr_vector bits;
   RTLIL::SigSpec signal;
   enum Type : unsigned char { Bit, Add };
   Type type_;
-  SymConst();
+  size_t size() const { return bits.size(); }
+  SymConst() : bits(z3_context) {}
   SymConst(std::string str, const RTLIL::SigSpec &sig = RTLIL::SigSpec());
   SymConst(int val, int width = 1,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec());
   SymConst(RTLIL::StateSym bit, int width = 1,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec());
-  SymConst(const RTLIL::SigSpec &sig) : type_(Type::Bit) {
-    for (auto b : sig) {
-      bits.push_back(StateSym(State::Sx, b));
-    }
-  }
+  SymConst(const RTLIL::SigSpec &sig) : type_(Type::Bit), bits(z3_context) {}
   SymConst(RTLIL::Const c, const RTLIL::SigSpec &sig = RTLIL::SigSpec())
-      : type_(Type::Bit) {
+      : type_(Type::Bit), bits(z3_context) {
     for (auto b : c.bits)
-      bits.push_back(StateSym(b));
+      bits.push_back(StateSym(b).val_);
     signal = sig;
   };
-  SymConst(const RTLIL::SymConst &c) : type_(Type::Bit) {
+  SymConst(const RTLIL::SymConst &c) : type_(Type::Bit), bits(z3_context) {
     flags = c.flags;
     bits = c.bits;
     signal = c.signal;
   };
-  SymConst(const std::vector<RTLIL::StateSym> &bits,
+  SymConst(const std::vector<RTLIL::StateSym> &_bits,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec())
-      : bits(bits), signal(sig) {
+      : bits(z3_context), signal(sig) {
     flags = CONST_FLAG_NONE;
+    for (auto b : _bits)
+      bits.push_back(b.val_.simplify());
   }
+  SymConst(const z3::expr_vector &_bits,
+           const RTLIL::SigSpec &sig = RTLIL::SigSpec())
+      : bits(_bits), signal(sig) {}
+  z3::expr to_expr() const { return z3::concat(bits).simplify(); }
   SymConst(const std::vector<bool> &bits,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec());
+
+  SymConst(const z3::expr &ee, int size) : bits(z3_context) {
+    z3::expr e = ee.simplify();
+    if (e.is_bv()) {
+      assert(e.get_sort().bv_size() == size);
+      for (int i = size - 1; i >= 0; --i) {
+        bits.push_back(e.extract(i, i).simplify());
+      }
+    } else {
+      assert(size == 1);
+      bits.push_back(z3::ite(e, bit_val(1), bit_val(0)).simplify());
+    }
+  }
+  SymConst(const z3::expr &e) : bits(z3_context) {
+    if (e.is_bv()) {
+      int size = e.get_sort().bv_size();
+      for (int i = size - 1; i >= 0; --i) {
+        bits.push_back(e.extract(i, i));
+      }
+    } else {
+      bits.push_back(z3::ite(e, bit_val(1), bit_val(0)));
+    }
+  }
+  void push_back(const StateSym &s) { bits.push_back(s.val_); }
   static SymConst CreateAdd(const SymConst &a, const SymConst &b) {
-    SymConst result;
-    result.type_ = Type::Add;
-    result.operands_ = {a, b};
-    return result;
+    assert(a.size() == b.size());
+    return SymConst(a.to_expr() + b.to_expr());
   }
   RTLIL::Const to_const() {
     RTLIL::Const c;
-    for (auto b : bits) {
-      if (b.is_const())
-        c.bits.push_back(b.to_state());
+    for (int i = 0; i < size(); ++i) {
+      auto b = bits[i];
+      if (is_true(b) || is_false(b))
+        c.bits.push_back(is_true(b) ? State::S1 : State::S1);
       else
         c.bits.push_back(RTLIL::Sx);
     }
   }
   bool operator==(const RTLIL::SymConst &other) const;
   bool operator!=(const RTLIL::SymConst &other) const;
-
+  inline const StateSym &operator[](unsigned i) const { return bits[i]; }
   bool as_bool() const;
   int as_int(bool is_signed = false) const;
   std::string as_string() const;
   static SymConst from_string(std::string str);
 
   std::string decode_string() const;
-
-  inline int size() const { return bits.size(); }
-  inline RTLIL::StateSym &operator[](int index) { return bits.at(index); }
-  inline const RTLIL::StateSym &operator[](int index) const {
-    return bits.at(index);
-  }
 
   bool is_fully_zero() const;
   bool is_fully_ones() const;
@@ -337,17 +315,31 @@ struct SymConst {
   inline RTLIL::SymConst
   extract(int offset, int len = 1,
           RTLIL::StateSym padding = RTLIL::State::S0) const {
-    RTLIL::SymConst ret;
+    // bits is ordered from big to little
+    z3::expr_vector e(z3_context);
+    int size = this->size();
+    for (int i = 0; i < len; ++i) {
+      int pos = size - offset - len + i;
+      if (pos < 0) {
+        e.push_back(padding.to_expr());
+      } else
+        e.push_back(bits[pos]);
+    }
+    return z3::concat(e).simplify();
+    // return SymConst(to_expr().extract(offset + len - 1, offset).simplify());
+    /*
     ret.bits.reserve(len);
     for (int i = offset; i < offset + len; i++)
       ret.bits.push_back(i < GetSize(bits) ? bits[i] : padding);
-    return ret;
+    */
   }
 
   inline unsigned int hash() const {
     unsigned int h = mkhash_init;
-    for (auto b : bits)
-      mkhash(h, b.val_);
+    for (int i = 0; i < size(); ++i) {
+      auto b = bits[i];
+      mkhash(h, b.id());
+    }
     return h;
   }
 };

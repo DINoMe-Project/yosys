@@ -229,12 +229,8 @@ struct SymCellTypes {
   }
 
   static RTLIL::SymConst eval_not(RTLIL::SymConst v) {
-    for (auto &bit : v.bits)
-      if (bit == RTLIL::S0)
-        bit = RTLIL::S1;
-      else if (bit == RTLIL::S1)
-        bit = RTLIL::S0;
-    return v;
+
+    return (~v.to_expr()).simplify();
   }
 
   static RTLIL::SymConst eval(RTLIL::IdString type, const RTLIL::SymConst &arg1,
@@ -329,15 +325,14 @@ struct SymCellTypes {
       RTLIL::SymConst ret;
       int width = cell->parameters.at("\\Y_WIDTH").as_int();
       int offset = cell->parameters.at("\\OFFSET").as_int();
-      ret.bits.insert(ret.bits.end(), arg1.bits.begin() + offset,
-                      arg1.bits.begin() + offset + width);
+      for (size_t i = 0; i < width; ++i) {
+        ret.push_back(arg1[i + offset]);
+      }
       return ret;
     }
 
     if (cell->type == "$concat") {
-      RTLIL::SymConst ret = arg1;
-      ret.bits.insert(ret.bits.end(), arg2.bits.begin(), arg2.bits.end());
-      return ret;
+      return z3::concat(arg1.to_expr(), arg2.to_expr());
     }
 
     if (cell->type == "$lut") {
@@ -350,7 +345,7 @@ struct SymCellTypes {
       t.resize(1 << width);
 
       for (int i = width - 1; i >= 0; i--) {
-        RTLIL::StateSym sel = arg1.bits.at(i);
+        RTLIL::StateSym sel = arg1[i];
         std::vector<RTLIL::StateSym> new_t;
         if (sel == RTLIL::S0)
           new_t = std::vector<RTLIL::StateSym>(t.begin(),
@@ -383,7 +378,7 @@ struct SymCellTypes {
         bool match_x = true;
 
         for (int j = 0; j < width; j++) {
-          RTLIL::StateSym a = arg1.bits.at(j);
+          RTLIL::StateSym a = arg1[j];
           if (t.at(2 * width * i + 2 * j + 0) == State::S1) {
             if (a == State::S1)
               match_x = false;
@@ -423,30 +418,33 @@ struct SymCellTypes {
                               const RTLIL::SymConst &arg3,
                               bool *errp = nullptr) {
     if (cell->type.in("$mux", "$pmux", "$_MUX_")) {
-      RTLIL::SymConst ret = arg1;
-      std::vector<RTLIL::StateSym> sym_bits = arg1.bits;
-      for (size_t i = 0; i < arg3.bits.size(); i++) {
-        if (arg3.bits[i] == RTLIL::State::S1) {
-					int index = 0;
-          for (auto b_it = arg2.bits.begin() + i * arg1.bits.size();
-               b_it != arg2.bits.begin() + (i + 1) * arg1.bits.size(); ++b_it) {
-            sym_bits[index] = *b_it;
-						++index;
-          }
-        } else if (arg3.bits[i] != RTLIL::State::S0) {
-          int index = 0;
-          for (auto b_it = arg2.bits.begin() + i * arg1.bits.size();
-               b_it != arg2.bits.begin() + (i + 1) * arg1.bits.size(); ++b_it) {
-            if (*b_it == arg3.bits[i])
-              sym_bits[index] = *b_it;
-            else
-              sym_bits[index] = RTLIL::StateSym::CreateMux(sym_bits[index],
-                                                           *b_it, arg3.bits[i]);
-            ++index;
-          }
+      std::cerr << "mux" << arg1.to_expr() << arg2.to_expr() << arg3.to_expr()
+                << "\n";
+      z3::expr ret = arg1.to_expr();
+      size_t result_len = arg1.size();
+      assert(result_len>0);
+      assert(result_len * arg3.size() == arg2.size());
+      for (int i = 0; i < arg3.size(); ++i) {
+        if(ret.is_bv()){
+          std::cerr<<"is bv"<<z3::ite(arg3[i].to_expr() == 1,
+                        arg2.extract(i * result_len, result_len).to_expr(), ret);
+        }else{
+          std::cerr<<"not bv";
         }
+        if (arg3[i].to_state() == State::S1) {
+          return arg2.extract(i * result_len, result_len);
+        }
+        if (arg3[i].to_state() == State::S0)
+          continue;
+        ret = z3::ite(arg3[i].to_expr() == 1,
+                      arg2.extract(i * result_len, result_len).to_expr(), ret);
+        std::cerr << "curret ret=" << "\n"<<i*result_len<<","<<":";
+        std::cerr<<arg2.extract(i * result_len, result_len).to_expr();
+
+        std::cerr << ret.to_string() << "\n";
       }
-      ret = RTLIL::SymConst(sym_bits);
+      std::cerr << "mux end, ret.to_string=\n";
+      std::cerr << "=" << ret.to_string() << "\n";
       return ret;
     }
 

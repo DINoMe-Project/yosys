@@ -24,280 +24,133 @@
 
 #include "kernel/calc_sym.h"
 #include "kernel/yosys.h"
-#include "z3.h"
 #include "libs/bigint/BigIntegerLibrary.hh"
+#include "z3.h"
 #include <string>
 YOSYS_NAMESPACE_BEGIN
 z3::context z3_context;
-static void extend_u0(RTLIL::SymConst &arg, int width, bool is_signed) {
-  RTLIL::StateSym padding = RTLIL::State::S0;
-
-  if (arg.bits.size() > 0 && is_signed)
-    padding = arg.bits.back();
-
-  while (int(arg.bits.size()) < width)
-    arg.bits.push_back(padding);
-
-  arg.bits.resize(width);
-}
-
-static BigInteger const2big(const RTLIL::SymConst &val, bool as_signed,
-                            int &undef_bit_pos) {
-  BigUnsigned mag;
-
-  BigInteger::Sign sign = BigInteger::positive;
-  State inv_sign_bit = RTLIL::State::S1;
-  size_t num_bits = val.bits.size();
-
-  if (as_signed && num_bits && val.bits[num_bits - 1] == RTLIL::State::S1) {
-    inv_sign_bit = RTLIL::State::S0;
-    sign = BigInteger::negative;
-    num_bits--;
+static z3::expr extend_u0(const z3::expr &e, unsigned width, bool is_signed) {
+  unsigned old_width = e.is_bv() ? e.get_sort().bv_size() : 1;
+  if (width < old_width) {
+//    std::cerr << width << "," << old_width << e << "\n";
+    return e.extract(width - 1, 0).simplify();
   }
-
-  for (size_t i = 0; i < num_bits; i++)
-    if (val.bits[i] == RTLIL::State::S0 || val.bits[i] == RTLIL::State::S1)
-      mag.setBit(i, val.bits[i] == inv_sign_bit);
-    else if (undef_bit_pos < 0)
-      undef_bit_pos = i;
-
-  if (sign == BigInteger::negative)
-    mag += 1;
-
-  return BigInteger(mag, sign);
-}
-
-static RTLIL::SymConst big2const(const BigInteger &val, int result_len,
-                                 int undef_bit_pos) {
-  if (undef_bit_pos >= 0)
-    return RTLIL::SymConst(RTLIL::State::Sx, result_len);
-
-  BigUnsigned mag = val.getMagnitude();
-  RTLIL::SymConst result(0, result_len);
-
-  if (!mag.isZero()) {
-    if (val.getSign() < 0) {
-      mag--;
-      for (int i = 0; i < result_len; i++)
-        result.bits[i] = mag.getBit(i) ? RTLIL::State::S0 : RTLIL::State::S1;
-    } else {
-      for (int i = 0; i < result_len; i++)
-        result.bits[i] = mag.getBit(i) ? RTLIL::State::S1 : RTLIL::State::S0;
-    }
+  if (width - old_width == 0)
+    return e;
+  z3::expr ee = e;
+  if (!e.is_bv()) {
+    assert(e.is_bool());
+    ee = z3::ite(e, RTLIL::bit_val(1), RTLIL::bit_val(0));
   }
-
-#if 0
-	if (undef_bit_pos >= 0)
-		for (int i = undef_bit_pos; i < result_len; i++)
-			result.bits[i] = RTLIL::State::Sx;
-#endif
-
-  return result;
-}
-
-static RTLIL::StateSym logic_and(const RTLIL::StateSym &a,
-                                 const RTLIL::StateSym &b) {
-  if (a == RTLIL::State::S0)
-    return RTLIL::State::S0;
-  if (b == RTLIL::State::S0)
-    return RTLIL::State::S0;
-  if (a == RTLIL::State::S1 && b != RTLIL::State::S1)
-    return RTLIL::State::S1;
-  if (a == RTLIL::State::S1)
-    return b;
-  if (b == RTLIL::State::S1)
-    return a;
-  return RTLIL::StateSym ::CreateAnd(vector<RTLIL::StateSym>({a, b}));
-}
-
-static RTLIL::StateSym logic_or(const RTLIL::StateSym &a,
-                                const RTLIL::StateSym &b) {
-  if (a == RTLIL::State::S1)
-    return RTLIL::State::S1;
-  if (b == RTLIL::State::S1)
-    return RTLIL::State::S1;
-  if (a == RTLIL::State::S0 && b != RTLIL::State::S0)
-    return RTLIL::State::S0;
-  if (a == RTLIL::State::S0)
-    return b;
-  if (b == RTLIL::State::S0)
-    return a;
-  return RTLIL::StateSym ::CreateOr(vector<RTLIL::StateSym>({a, b}));
-}
-
-static RTLIL::StateSym logic_xor(const RTLIL::StateSym &a,
-                                 const RTLIL::StateSym &b) {
-  if (a.is_const() && b.is_const())
-    return a.val_ != b.val_ ? RTLIL::State::S1 : RTLIL::State::S0;
-  if (a == RTLIL::State::S0)
-    return b;
-  if (a == RTLIL::State::S1)
-    return RTLIL::StateSym ::CreateNot(b);
-  if (b == RTLIL::State::S0)
-    return a;
-  if (b == RTLIL::State::S1)
-    return RTLIL::StateSym ::CreateNot(a);
-  return RTLIL::StateSym ::CreateXor(vector<RTLIL::StateSym>({a, b}));
-}
-static RTLIL::StateSym logic_not(const RTLIL::StateSym &a) {
-  if (a.is_const())
-    return (a.val_ == RTLIL::State::S1) ? RTLIL::State::S0 : RTLIL::State::S1;
-  return RTLIL::StateSym ::CreateNot(a);
-}
-static RTLIL::StateSym logic_xnor(const RTLIL::StateSym &a,
-                                  const RTLIL::StateSym &b) {
-  if (a.is_const() && b.is_const())
-    return a.val_ == b.val_ ? RTLIL::State::S1 : RTLIL::State::S0;
-  if (a == RTLIL::State::S1)
-    return b;
-  if (a == RTLIL::State::S0)
-    return RTLIL::StateSym ::CreateNot(b);
-  if (b == RTLIL::State::S1)
-    return a;
-  if (b == RTLIL::State::S0)
-    return RTLIL::StateSym ::CreateNot(a);
-  return RTLIL::StateSym ::CreateNot(
-      RTLIL::StateSym::CreateXor(vector<RTLIL::StateSym>({a, b})));
+//  std::cerr << "extend" << ee << "is_signed=" << is_signed
+  //          << ", width - old_width" << width - old_width;
+  z3::expr ret = is_signed ? z3::sext(ee, width - old_width).simplify()
+                           : z3::zext(ee, width - old_width).simplify();
+  //std::cerr << "return " << ret;
+  return ret;
 }
 
 RTLIL::SymConst RTLIL::SymConst_not(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &, bool signed1, bool,
                                     int result_len) {
-  if (result_len < 0)
-    result_len = arg1.bits.size();
-
-  RTLIL::SymConst arg1_ext = arg1;
-  extend_u0(arg1_ext, result_len, signed1);
-
-  RTLIL::SymConst result(RTLIL::State::Sx, result_len);
-  for (size_t i = 0; i < size_t(result_len); i++) {
-    if (i >= arg1_ext.bits.size())
-      result.bits[i] = RTLIL::State::S0;
-    else if (arg1_ext.bits[i] == RTLIL::State::S0)
-      result.bits[i] = RTLIL::State::S1;
-    else if (arg1_ext.bits[i] == RTLIL::State::S1)
-      result.bits[i] = RTLIL::State::S0;
-    else {
-      result.bits[i] = RTLIL::StateSym ::CreateNot(arg1_ext.bits[i]);
-    }
-  }
-
-  return result;
-}
-
-static RTLIL::SymConst
-logic_wrapper(RTLIL::StateSym (*logic_func)(const RTLIL::StateSym &,
-                                            const RTLIL::StateSym &),
-              RTLIL::SymConst arg1, RTLIL::SymConst arg2, bool signed1,
-              bool signed2, int result_len = -1) {
-  if (result_len < 0)
-    result_len = max(arg1.bits.size(), arg2.bits.size());
-
-  extend_u0(arg1, result_len, signed1);
-  extend_u0(arg2, result_len, signed2);
-
-  RTLIL::SymConst result(RTLIL::State::Sx, result_len);
-  for (size_t i = 0; i < size_t(result_len); i++) {
-    RTLIL::StateSym a = i < arg1.bits.size() ? arg1.bits[i] : RTLIL::State::S0;
-    RTLIL::StateSym b = i < arg2.bits.size() ? arg2.bits[i] : RTLIL::State::S0;
-    result.bits[i] = logic_func(a, b);
-  }
-
-  return result;
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  return ~a;
 }
 
 RTLIL::SymConst RTLIL::SymConst_and(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  return logic_wrapper(logic_and, arg1, arg2, signed1, signed2, result_len);
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(a & b);
+  // return logic_wrapper(logic_and, arg1, arg2, signed1, signed2, result_len);
 }
 
 RTLIL::SymConst RTLIL::SymConst_or(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  return logic_wrapper(logic_or, arg1, arg2, signed1, signed2, result_len);
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(a | b);
+  // return logic_wrapper(logic_or, arg1, arg2, signed1, signed2, result_len);
 }
 
 RTLIL::SymConst RTLIL::SymConst_xor(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  return logic_wrapper(logic_xor, arg1, arg2, signed1, signed2, result_len);
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(a ^ b);
+  // return logic_wrapper(logic_xor, arg1, arg2, signed1, signed2, result_len);
 }
 
 RTLIL::SymConst RTLIL::SymConst_xnor(const RTLIL::SymConst &arg1,
                                      const RTLIL::SymConst &arg2, bool signed1,
                                      bool signed2, int result_len) {
-  return logic_wrapper(logic_xnor, arg1, arg2, signed1, signed2, result_len);
-}
-
-static RTLIL::SymConst
-logic_reduce_wrapper(RTLIL::StateSym initial,
-                     RTLIL::StateSym (*logic_func)(const RTLIL::StateSym &,
-                                                   const RTLIL::StateSym &),
-                     const RTLIL::SymConst &arg1, int result_len) {
-  RTLIL::StateSym temp = initial;
-
-  for (size_t i = 0; i < arg1.bits.size(); i++)
-    temp = logic_func(temp, arg1.bits[i]);
-
-  RTLIL::SymConst result(temp);
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(z3::xnor(a, b));
+  // return logic_wrapper(logic_xnor, arg1, arg2, signed1, signed2, result_len);
 }
 
 RTLIL::SymConst RTLIL::SymConst_reduce_and(const RTLIL::SymConst &arg1,
                                            const RTLIL::SymConst &, bool, bool,
                                            int result_len) {
-  return logic_reduce_wrapper(RTLIL::State::S1, logic_and, arg1, result_len);
+  return RTLIL::SymConst(z3::mk_and(arg1.bits));
+  //  return logic_reduce_wrapper(RTLIL::State::S1, logic_and, arg1,
+  //  result_len);
 }
 
 RTLIL::SymConst RTLIL::SymConst_reduce_or(const RTLIL::SymConst &arg1,
                                           const RTLIL::SymConst &, bool, bool,
                                           int result_len) {
-  return logic_reduce_wrapper(RTLIL::State::S0, logic_or, arg1, result_len);
+  return RTLIL::SymConst(z3::mk_or(arg1.bits));
 }
 
 RTLIL::SymConst RTLIL::SymConst_reduce_xor(const RTLIL::SymConst &arg1,
                                            const RTLIL::SymConst &, bool, bool,
                                            int result_len) {
-  return logic_reduce_wrapper(RTLIL::State::S0, logic_xor, arg1, result_len);
+
+  size_t size = arg1.size();
+  assert(size > 0);
+  z3::expr e = arg1[0].to_expr();
+  for (size_t i = 1; i < size; ++i) {
+    e = (e ^ arg1[i].to_expr()).simplify();
+  }
+  return RTLIL::SymConst(e, 1);
 }
 
 RTLIL::SymConst RTLIL::SymConst_reduce_xnor(const RTLIL::SymConst &arg1,
                                             const RTLIL::SymConst &, bool, bool,
                                             int result_len) {
-  RTLIL::SymConst buffer =
-      logic_reduce_wrapper(RTLIL::State::S0, logic_xor, arg1, result_len);
-  if (!buffer.bits.empty()) {
-    if (buffer.bits.front() == RTLIL::State::S0)
-      buffer.bits.front() = RTLIL::State::S1;
-    else if (buffer.bits.front() == RTLIL::State::S1)
-      buffer.bits.front() = RTLIL::State::S0;
+  size_t size = arg1.size();
+  assert(size > 0);
+  z3::expr e = arg1[0].to_expr();
+  for (size_t i = 1; i < size; ++i) {
+    e = z3::xnor(e, arg1[i].to_expr()).simplify();
   }
-  return buffer;
+  return RTLIL::SymConst(e, 1);
 }
 
 RTLIL::SymConst RTLIL::SymConst_reduce_bool(const RTLIL::SymConst &arg1,
                                             const RTLIL::SymConst &, bool, bool,
                                             int result_len) {
-  return logic_reduce_wrapper(RTLIL::State::S0, logic_or, arg1, result_len);
+  size_t size = arg1.size();
+  assert(size > 0);
+  z3::expr e = arg1.bits[0];
+  for (size_t i = 1; i < size; ++i) {
+    e = (e | arg1[i].to_expr()).simplify();
+  }
+  return RTLIL::SymConst(e, 1);
 }
 
 RTLIL::SymConst RTLIL::SymConst_logic_not(const RTLIL::SymConst &arg1,
-                                          const RTLIL::SymConst &, bool signed1,
-                                          bool, int result_len) {
-  int undef_bit_pos_a = -1;
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos_a);
-  RTLIL::SymConst result(
-      a.isZero()
-          ? undef_bit_pos_a >= 0
-                ? RTLIL::StateSym ::CreateNot(
-                      SymConst_reduce_or(arg1, arg1, 0, 0, 1).bits.front())
-                : RTLIL::State::S1
-          : RTLIL::State::S0);
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
+                                          const RTLIL::SymConst &unused,
+                                          bool signed1, bool unused2,
+                                          int result_len) {
+  RTLIL::SymConst result =
+      SymConst_reduce_bool(arg1, unused, signed1, unused2, result_len);
+  result.bits[0] = ~result.bits[0];
   return result;
 }
 
@@ -305,57 +158,31 @@ RTLIL::SymConst RTLIL::SymConst_logic_and(const RTLIL::SymConst &arg1,
                                           const RTLIL::SymConst &arg2,
                                           bool signed1, bool signed2,
                                           int result_len) {
-  int undef_bit_pos_a = -1, undef_bit_pos_b = -1;
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos_a);
-  BigInteger b = const2big(arg2, signed2, undef_bit_pos_b);
-
-  RTLIL::StateSym bit_a =
-      a.isZero() ? undef_bit_pos_a >= 0 ? RTLIL::State::Sx : RTLIL::State::S0
-                 : RTLIL::State::S1;
-  RTLIL::StateSym bit_b =
-      b.isZero() ? undef_bit_pos_b >= 0 ? RTLIL::State::Sx : RTLIL::State::S0
-                 : RTLIL::State::S1;
-
-  RTLIL::SymConst result(
-      logic_and(SymConst_reduce_or(arg1, arg1, 0, 0, 1).bits.front(),
-                SymConst_reduce_or(arg2, arg2, 0, 0, 1).bits.front()));
-
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(a & b);
 }
 
 RTLIL::SymConst RTLIL::SymConst_logic_or(const RTLIL::SymConst &arg1,
                                          const RTLIL::SymConst &arg2,
                                          bool signed1, bool signed2,
                                          int result_len) {
-  int undef_bit_pos_a = -1, undef_bit_pos_b = -1;
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos_a);
-  BigInteger b = const2big(arg2, signed2, undef_bit_pos_b);
-
-  RTLIL::StateSym bit_a =
-      a.isZero() ? undef_bit_pos_a >= 0 ? RTLIL::State::Sx : RTLIL::State::S0
-                 : RTLIL::State::S1;
-  RTLIL::StateSym bit_b =
-      b.isZero() ? undef_bit_pos_b >= 0 ? RTLIL::State::Sx : RTLIL::State::S0
-                 : RTLIL::State::S1;
-  RTLIL::SymConst result(logic_or(bit_a, bit_b));
-
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  auto a = extend_u0(arg1.to_expr(), result_len, false);
+  auto b = extend_u0(arg2.to_expr(), result_len, false);
+  return RTLIL::SymConst(a | b);
 }
 
 static RTLIL::SymConst SymConst_shift_worker(const RTLIL::SymConst &arg1,
                                              const RTLIL::SymConst &arg2,
                                              bool sign_ext, int direction,
                                              int result_len) {
-  int undef_bit_pos = -1;
+  z3::expr e = extend_u0(arg1.to_expr(), result_len, sign_ext);
+  return z3::shl(e, arg2.to_expr());
+  /*int undef_bit_pos = -1;
   BigInteger offset = const2big(arg2, false, undef_bit_pos) * direction;
 
   if (result_len < 0)
     result_len = arg1.bits.size();
-
   RTLIL::SymConst result(RTLIL::State::Sx, result_len);
   if (undef_bit_pos >= 0)
     return result;
@@ -369,32 +196,36 @@ static RTLIL::SymConst SymConst_shift_worker(const RTLIL::SymConst &arg1,
     else
       result.bits[i] = arg1.bits[pos.toInt()];
   }
-
   return result;
+  */
 }
 
 RTLIL::SymConst RTLIL::SymConst_shl(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool, int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
-  extend_u0(arg1_ext, result_len, signed1);
-  return SymConst_shift_worker(arg1_ext, arg2, false, -1, result_len);
+  z3::expr e = extend_u0(arg1.to_expr(), result_len, false);
+  z3::expr off = extend_u0(arg2.to_expr(), result_len, false);
+  z3::expr ret = z3::shl(e, off);
+  return ret;
 }
 
 RTLIL::SymConst RTLIL::SymConst_shr(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool, int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
-  extend_u0(arg1_ext, max(result_len, GetSize(arg1)), signed1);
-  return SymConst_shift_worker(arg1_ext, arg2, false, +1, result_len);
+  z3::expr e = extend_u0(arg1.to_expr(), result_len, false);
+  z3::expr off = extend_u0(arg2.to_expr(), result_len, false);
+
+  return z3::lshr(e, off);
 }
 
 RTLIL::SymConst RTLIL::SymConst_sshl(const RTLIL::SymConst &arg1,
                                      const RTLIL::SymConst &arg2, bool signed1,
                                      bool signed2, int result_len) {
-  if (!signed1)
+  if (!signed1) {
     return SymConst_shl(arg1, arg2, signed1, signed2, result_len);
-  return SymConst_shift_worker(arg1, arg2, true, -1, result_len);
+  }
+  return extend_u0(z3::shl(arg1.to_expr(), arg2.to_expr()).simplify(),
+                   result_len, true);
 }
 
 RTLIL::SymConst RTLIL::SymConst_sshr(const RTLIL::SymConst &arg1,
@@ -402,32 +233,36 @@ RTLIL::SymConst RTLIL::SymConst_sshr(const RTLIL::SymConst &arg1,
                                      bool signed2, int result_len) {
   if (!signed1)
     return SymConst_shr(arg1, arg2, signed1, signed2, result_len);
-  return SymConst_shift_worker(arg1, arg2, true, +1, result_len);
+  z3::expr e = extend_u0(arg1.to_expr(), result_len, true);
+  z3::expr off = extend_u0(arg2.to_expr(), result_len, false);
+  return z3::ashr(e, off);
 }
 
 static RTLIL::SymConst SymConst_shift_shiftx(const RTLIL::SymConst &arg1,
                                              const RTLIL::SymConst &arg2, bool,
                                              bool signed2, int result_len,
                                              RTLIL::StateSym other_bits) {
-  int undef_bit_pos = -1;
-  BigInteger offset = const2big(arg2, signed2, undef_bit_pos);
+  /*
+int undef_bit_pos = -1;
+BigInteger offset = const2big(arg2, signed2, undef_bit_pos);
 
-  if (result_len < 0)
-    result_len = arg1.bits.size();
+if (result_len < 0)
+result_len = arg1.bits.size();
 
-  RTLIL::SymConst result(RTLIL::State::Sx, result_len);
-  if (undef_bit_pos >= 0)
-    return result;
+RTLIL::SymConst result(RTLIL::State::Sx, result_len);
+if (undef_bit_pos >= 0)
+return result;
 
-  for (int i = 0; i < result_len; i++) {
-    BigInteger pos = BigInteger(i) + offset;
-    if (pos < 0 || pos >= BigInteger(int(arg1.bits.size())))
-      result.bits[i] = other_bits;
-    else
-      result.bits[i] = arg1.bits[pos.toInt()];
-  }
 
-  return result;
+for (int i = 0; i < result_len; i++) {
+BigInteger pos = BigInteger(i) + offset;
+if (pos < 0 || pos >= BigInteger(int(arg1.bits.size())))
+result.bits[i] = other_bits;
+else
+result.bits[i] = arg1.bits[pos.toInt()];
+}
+*/
+  return RTLIL::SymConst(std::string("unknown"));
 }
 
 RTLIL::SymConst RTLIL::SymConst_shift(const RTLIL::SymConst &arg1,
@@ -448,461 +283,187 @@ RTLIL::SymConst RTLIL::SymConst_shiftx(const RTLIL::SymConst &arg1,
 RTLIL::SymConst RTLIL::SymConst_lt(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  bool y = const2big(arg1, signed1, undef_bit_pos) <
-           const2big(arg2, signed2, undef_bit_pos);
-  RTLIL::SymConst result(undef_bit_pos >= 0
-                             ? RTLIL::StateSym ::CreateLt(vector<StateSym>())
-                             : y ? RTLIL::State::S1 : RTLIL::State::S0);
-
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return extend_u0(a < b, result_len, false);
 }
 
 RTLIL::SymConst RTLIL::SymConst_le(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  bool y = const2big(arg1, signed1, undef_bit_pos) <=
-           const2big(arg2, signed2, undef_bit_pos);
-  RTLIL::SymConst result(undef_bit_pos >= 0
-                             ? RTLIL::State::Sx
-                             : y ? RTLIL::State::S1 : RTLIL::State::S0);
-
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return extend_u0(a <= b, result_len, false);
 }
 
 RTLIL::SymConst RTLIL::SymConst_eq(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
-  RTLIL::SymConst arg2_ext = arg2;
-  RTLIL::SymConst result(RTLIL::State::S0, result_len);
-
-  int width = max(arg1_ext.bits.size(), arg2_ext.bits.size());
-  extend_u0(arg1_ext, width, signed1 && signed2);
-  extend_u0(arg2_ext, width, signed1 && signed2);
-
-  RTLIL::StateSym matched_status = RTLIL::State::S1;
-  for (size_t i = 0; i < arg1_ext.bits.size(); i++) {
-    if (arg1_ext.bits.at(i) == RTLIL::State::S0 &&
-        arg2_ext.bits.at(i) == RTLIL::State::S1)
-      return result;
-    if (arg1_ext.bits.at(i) == RTLIL::State::S1 &&
-        arg2_ext.bits.at(i) == RTLIL::State::S0)
-      return result;
-    if (!arg1_ext.bits.at(i).is_const() || !arg2_ext.bits.at(i).is_const())
-      matched_status = logic_and(
-          matched_status,
-          RTLIL::StateSym::CreateEq(arg1_ext.bits.at(i), arg2_ext.bits.at(i)));
-  }
-
-  result.bits.front() = matched_status;
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, false);
+  auto b = extend_u0(arg2.to_expr(), width, false);
+  return (a == b);
 }
 
 RTLIL::SymConst RTLIL::SymConst_ne(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  RTLIL::SymConst result =
-      RTLIL::SymConst_eq(arg1, arg2, signed1, signed2, result_len);
-  if (result.bits.front() == RTLIL::State::S0)
-    result.bits.front() = RTLIL::State::S1;
-  else if (result.bits.front() == RTLIL::State::S1)
-    result.bits.front() = RTLIL::State::S0;
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a != b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_eqx(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
-  RTLIL::SymConst arg2_ext = arg2;
-  RTLIL::SymConst result(RTLIL::State::S0, result_len);
-
-  int width = max(arg1_ext.bits.size(), arg2_ext.bits.size());
-  extend_u0(arg1_ext, width, signed1 && signed2);
-  extend_u0(arg2_ext, width, signed1 && signed2);
-
-  for (size_t i = 0; i < arg1_ext.bits.size(); i++) {
-    if (arg1_ext.bits.at(i) != arg2_ext.bits.at(i))
-      return result;
-  }
-
-  result.bits.front() = RTLIL::State::S1;
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a==b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_nex(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  RTLIL::SymConst result =
-      RTLIL::SymConst_eqx(arg1, arg2, signed1, signed2, result_len);
-  if (result.bits.front() == RTLIL::State::S0)
-    result.bits.front() = RTLIL::State::S1;
-  else if (result.bits.front() == RTLIL::State::S1)
-    result.bits.front() = RTLIL::State::S0;
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a != b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_ge(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  log("SymConst_get %d: %s %s\n", result_len, arg1.as_string().c_str(),
-      arg2.as_string().c_str());
-  int undef_bit_pos = -1;
-  bool y = const2big(arg1, signed1, undef_bit_pos) >=
-           const2big(arg2, signed2, undef_bit_pos);
-  RTLIL::SymConst result(undef_bit_pos >= 0
-                             ? RTLIL::State::Sx
-                             : y ? RTLIL::State::S1 : RTLIL::State::S0);
-
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return extend_u0(a >= b, result_len, false);
 }
 
 RTLIL::SymConst RTLIL::SymConst_gt(const RTLIL::SymConst &arg1,
                                    const RTLIL::SymConst &arg2, bool signed1,
                                    bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  bool y = const2big(arg1, signed1, undef_bit_pos) >
-           const2big(arg2, signed2, undef_bit_pos);
-  RTLIL::SymConst result(undef_bit_pos >= 0
-                             ? RTLIL::State::Sx
-                             : y ? RTLIL::State::S1 : RTLIL::State::S0);
-  /*log("1. SymConst_gt %d: %s %s=> %s: %d\n", result_len,
-      arg1.as_string().c_str(), arg2.as_string().c_str(),
-      result.as_string().c_str(), GetSize(result));*/
-  while (int(result.bits.size()) < result_len)
-    result.bits.push_back(RTLIL::State::S0);
-  /*log("SymConst_gt %d: %s %s=> %s: %d\n", result_len, arg1.as_string().c_str(),
-      arg2.as_string().c_str(), result.as_string().c_str(), GetSize(result));*/
-  return result;
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return extend_u0(a > b, result_len, false);
 }
 RTLIL::SymConst RTLIL::SymConst_add(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  log("add\n");
-   vector<StateSym> bits(result_len, State::S0);
-    log("add %d\n", result_len);
-    StateSym c = State::S0;
-    StateSym cc = State::S0;
-    for (size_t i = 0; i < result_len; ++i) {
-      StateSym a = (i < arg1.bits.size()) ? arg1.bits[i] : State::S0;
-      StateSym b = (i < arg2.bits.size()) ? arg2.bits[i] : State::S0;
-      c = cc;
-      if (c == State::S0) {
-        cc = logic_and(a, b);
-        bits[i] = logic_xor(a, b);
-      } else if (c == State::S1) {
-        cc = logic_or(a, b);
-        bits[i] = logic_xnor(a, b);
-      } else {
-        cc = logic_or(logic_and(logic_not(c), logic_or(a, b)),
-                      logic_and(c, logic_and(a, b)));
-        bits[i] = logic_or(logic_and(logic_not(c), logic_xor(a, b)),
-                           logic_and(c, logic_xnor(a, b)));
-      }
-    }
-    return RTLIL::SymConst(bits);
-	}
-RTLIL::SymConst SymConst_add_low(const RTLIL::SymConst &arg1,
-                                    const RTLIL::SymConst &arg2, bool signed1,
-                                    bool signed2, int result_len) {
-  log("add\n");
-  int undef_bit_pos = -1;
-  BigInteger y = const2big(arg1, signed1, undef_bit_pos) +
-                 const2big(arg2, signed2, undef_bit_pos);
-  if (undef_bit_pos > 0) {
-    RTLIL::SymConst::CreateAdd(arg1, arg2);
-  }
-  return big2const(
-      y, result_len >= 0 ? result_len : max(arg1.bits.size(), arg2.bits.size()),
-      undef_bit_pos);
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a + b;
 }
-// see sym_calc.cc for the implementation of this functions
-RTLIL::SymConst SymConst_not(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_and(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_or(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_xor(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_xnor(const RTLIL::SymConst &arg1,
-                              const RTLIL::SymConst &arg2, bool signed1,
-                              bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_reduce_and(const RTLIL::SymConst &arg1,
-                                    const RTLIL::SymConst &arg2, bool signed1,
-                                    bool signed2, int result_len);
-RTLIL::SymConst SymConst_reduce_or(const RTLIL::SymConst &arg1,
-                                   const RTLIL::SymConst &arg2, bool signed1,
-                                   bool signed2, int result_len);
-RTLIL::SymConst SymConst_reduce_xor(const RTLIL::SymConst &arg1,
-                                    const RTLIL::SymConst &arg2, bool signed1,
-                                    bool signed2, int result_len);
-RTLIL::SymConst SymConst_reduce_xnor(const RTLIL::SymConst &arg1,
-                                     const RTLIL::SymConst &arg2, bool signed1,
-                                     bool signed2, int result_len);
-RTLIL::SymConst SymConst_reduce_bool(const RTLIL::SymConst &arg1,
-                                     const RTLIL::SymConst &arg2, bool signed1,
-                                     bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_logic_not(const RTLIL::SymConst &arg1,
-                                   const RTLIL::SymConst &arg2, bool signed1,
-                                   bool signed2, int result_len);
-RTLIL::SymConst SymConst_logic_and(const RTLIL::SymConst &arg1,
-                                   const RTLIL::SymConst &arg2, bool signed1,
-                                   bool signed2, int result_len);
-RTLIL::SymConst SymConst_logic_or(const RTLIL::SymConst &arg1,
-                                  const RTLIL::SymConst &arg2, bool signed1,
-                                  bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_shl(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_shr(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_sshl(const RTLIL::SymConst &arg1,
-                              const RTLIL::SymConst &arg2, bool signed1,
-                              bool signed2, int result_len);
-RTLIL::SymConst SymConst_sshr(const RTLIL::SymConst &arg1,
-                              const RTLIL::SymConst &arg2, bool signed1,
-                              bool signed2, int result_len);
-RTLIL::SymConst SymConst_shift(const RTLIL::SymConst &arg1,
-                               const RTLIL::SymConst &arg2, bool signed1,
-                               bool signed2, int result_len);
-RTLIL::SymConst SymConst_shiftx(const RTLIL::SymConst &arg1,
-                                const RTLIL::SymConst &arg2, bool signed1,
-                                bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_lt(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_le(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_eq(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_ne(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_eqx(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_nex(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_ge(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-RTLIL::SymConst SymConst_gt(const RTLIL::SymConst &arg1,
-                            const RTLIL::SymConst &arg2, bool signed1,
-                            bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_add(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_sub(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_mul(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_div(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_mod(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_pow(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-
-RTLIL::SymConst SymConst_pos(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
-RTLIL::SymConst SymConst_neg(const RTLIL::SymConst &arg1,
-                             const RTLIL::SymConst &arg2, bool signed1,
-                             bool signed2, int result_len);
 
 RTLIL::SymConst RTLIL::SymConst_sub(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  BigInteger y = const2big(arg1, signed1, undef_bit_pos) -
-                 const2big(arg2, signed2, undef_bit_pos);
-  return big2const(
-      y, result_len >= 0 ? result_len : max(arg1.bits.size(), arg2.bits.size()),
-      undef_bit_pos);
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a - b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_mul(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  BigInteger y = const2big(arg1, signed1, undef_bit_pos) *
-                 const2big(arg2, signed2, undef_bit_pos);
-  return big2const(
-      y, result_len >= 0 ? result_len : max(arg1.bits.size(), arg2.bits.size()),
-      min(undef_bit_pos, 0));
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a * b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_div(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos);
-  BigInteger b = const2big(arg2, signed2, undef_bit_pos);
-  if (b.isZero())
-    return RTLIL::SymConst(RTLIL::State::Sx, result_len);
-  bool result_neg = (a.getSign() == BigInteger::negative) !=
-                    (b.getSign() == BigInteger::negative);
-  a = a.getSign() == BigInteger::negative ? -a : a;
-  b = b.getSign() == BigInteger::negative ? -b : b;
-  return big2const(result_neg ? -(a / b) : (a / b),
-                   result_len >= 0 ? result_len
-                                   : max(arg1.bits.size(), arg2.bits.size()),
-                   min(undef_bit_pos, 0));
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return a / b;
 }
 
 RTLIL::SymConst RTLIL::SymConst_mod(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos);
-  BigInteger b = const2big(arg2, signed2, undef_bit_pos);
-  if (b.isZero())
-    return RTLIL::SymConst(RTLIL::State::Sx, result_len);
-  bool result_neg = a.getSign() == BigInteger::negative;
-  a = a.getSign() == BigInteger::negative ? -a : a;
-  b = b.getSign() == BigInteger::negative ? -b : b;
-  return big2const(result_neg ? -(a % b) : (a % b),
-                   result_len >= 0 ? result_len
-                                   : max(arg1.bits.size(), arg2.bits.size()),
-                   min(undef_bit_pos, 0));
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return z3::smod(a, b);
 }
 
 RTLIL::SymConst RTLIL::SymConst_pow(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &arg2, bool signed1,
                                     bool signed2, int result_len) {
-  int undef_bit_pos = -1;
-
-  BigInteger a = const2big(arg1, signed1, undef_bit_pos);
-  BigInteger b = const2big(arg2, signed2, undef_bit_pos);
-  BigInteger y = 1;
-
-  if (a == 0 && b < 0)
-    return RTLIL::SymConst(RTLIL::State::Sx, result_len);
-
-  if (a == 0 && b > 0)
-    return RTLIL::SymConst(RTLIL::State::S0, result_len);
-
-  if (b < 0) {
-    if (a < -1 || a > 1)
-      y = 0;
-    if (a == -1)
-      y = (-b % 2) == 0 ? 1 : -1;
-  }
-
-  if (b > 0) {
-    // Power-modulo with 2^result_len as modulus
-    BigInteger modulus = 1;
-    int modulus_bits = (result_len >= 0 ? result_len : 1024);
-    for (int i = 0; i < modulus_bits; i++)
-      modulus *= 2;
-
-    bool flip_result_sign = false;
-    if (a < 0) {
-      a *= -1;
-      if (b % 2 == 1)
-        flip_result_sign = true;
-    }
-
-    while (b > 0) {
-      if (b % 2 == 1)
-        y = (y * a) % modulus;
-      b = b / 2;
-      a = (a * a) % modulus;
-    }
-
-    if (flip_result_sign)
-      y *= -1;
-  }
-
-  return big2const(
-      y, result_len >= 0 ? result_len : max(arg1.bits.size(), arg2.bits.size()),
-      min(undef_bit_pos, 0));
+  int width = result_len >= 0 ? result_len : max(arg1.size(), arg2.size());
+  auto a = extend_u0(arg1.to_expr(), width, signed1 && signed2);
+  auto b = extend_u0(arg2.to_expr(), width, signed1 && signed2);
+  return z3::pw(a, b);
 }
 
 RTLIL::SymConst RTLIL::SymConst_pos(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &, bool signed1, bool,
                                     int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
-  extend_u0(arg1_ext, result_len, signed1);
-
-  return arg1_ext;
+  return extend_u0(arg1.to_expr(), result_len, signed1);
 }
 
 RTLIL::SymConst RTLIL::SymConst_neg(const RTLIL::SymConst &arg1,
                                     const RTLIL::SymConst &, bool signed1, bool,
                                     int result_len) {
-  RTLIL::SymConst arg1_ext = arg1;
   RTLIL::SymConst zero(RTLIL::State::S0, 1);
-
-  return RTLIL::SymConst_sub(zero, arg1_ext, true, signed1, result_len);
-}
-
-RTLIL::SymConst::SymConst() : type_(Type::Bit) {
-  flags = RTLIL::CONST_FLAG_NONE;
+  return RTLIL::SymConst_sub(zero, arg1, true, signed1, result_len);
 }
 
 RTLIL::SymConst::SymConst(std::string str, const RTLIL::SigSpec &_signal)
-    : type_(Type::Bit) {
+    : type_(Type::Bit), bits(z3_context) {
   flags = RTLIL::CONST_FLAG_STRING;
   for (int i = str.size() - 1; i >= 0; i--) {
     unsigned char ch = str[i];
     for (int j = 0; j < 8; j++) {
-      bits.push_back((ch & 1) != 0 ? RTLIL::S1 : RTLIL::S0);
+      bits.push_back(bit_val((ch & 1) != 0));
       ch = ch >> 1;
     }
   }
   signal = _signal;
 }
 
-RTLIL::SymConst::SymConst(int val, int width, const RTLIL::SigSpec &_signal) {
+RTLIL::SymConst::SymConst(int val, int width, const RTLIL::SigSpec &_signal)
+    : bits(z3_context) {
   flags = RTLIL::CONST_FLAG_NONE;
   for (int i = 0; i < width; i++) {
-    bits.push_back((val & 1) != 0 ? RTLIL::S1 : RTLIL::S0);
+    bits.push_back(bit_val(val));
     val = val >> 1;
   }
   signal = _signal;
 }
 
 RTLIL::SymConst::SymConst(RTLIL::StateSym bit, int width,
-                          const RTLIL::SigSpec &_signal) {
+                          const RTLIL::SigSpec &_signal)
+    : bits(z3_context) {
+  // std::cerr << "creat sym const\n";
   flags = RTLIL::CONST_FLAG_NONE;
-  for (int i = 0; i < width; i++)
-    bits.push_back(bit);
+  assert(_signal.size() == width);
+  for (int i = 0; i < width; i++) {
+    if (_signal.size() == width) {
+      bit = RTLIL::StateSym(bit.to_state(), _signal[i]);
+    }
+    bits.push_back(bit.val_);
+  }
   signal = _signal;
+  //  std::cerr << "end creat sym const\n";
 }
 
-RTLIL::SymConst::SymConst(const std::vector<bool> &bits,
-                          const RTLIL::SigSpec &_signal) {
+RTLIL::SymConst::SymConst(const std::vector<bool> &vals,
+                          const RTLIL::SigSpec &_signal)
+    : bits(z3_context) {
   flags = RTLIL::CONST_FLAG_NONE;
-  for (auto b : bits)
-    this->bits.push_back(b ? RTLIL::S1 : RTLIL::S0);
+  for (auto v : vals) {
+    bits.push_back(bit_val(v));
+  }
   signal = _signal;
 }
 /*
@@ -916,8 +477,7 @@ bool RTLIL::SymConst::operator<(const RTLIL::SymConst &other) const {
 }*/
 
 bool RTLIL::SymConst::operator==(const RTLIL::SymConst &other) const {
-    return bits == other.bits;
-
+  return bits == other.bits;
 }
 
 bool RTLIL::SymConst::operator!=(const RTLIL::SymConst &other) const {
@@ -926,30 +486,22 @@ bool RTLIL::SymConst::operator!=(const RTLIL::SymConst &other) const {
 
 bool RTLIL::SymConst::as_bool() const {
   for (size_t i = 0; i < bits.size(); i++)
-    if (bits[i] == RTLIL::S1)
+    if (is_true(bits[i]))
       return true;
   return false;
 }
 
 int RTLIL::SymConst::as_int(bool is_signed) const {
-  int32_t ret = 0;
+  z3::expr ret = z3_context.bv_val(0, 32);
   for (size_t i = 0; i < bits.size() && i < 32; i++)
-    if (bits[i] == RTLIL::S1)
-      ret |= 1 << i;
-  if (is_signed && bits.back() == RTLIL::S1)
-    for (size_t i = bits.size(); i < 32; i++)
-      ret |= 1 << i;
+    ret = (ret + (bits[i] << i)).simplify();
+  assert(ret.is_app());
   return ret;
 }
 
 std::string RTLIL::SymConst::as_string() const {
-  std::string ret;
-  z3::expr_vector exprs(bits.front().val_.ctx());
-  for(auto b : bits){
-    exprs.push_back(b.val_);
-  }
-  return z3::concat(exprs).simplify().to_string();
-  switch (type_) {
+  return this->to_expr().to_string();
+  /*switch (type_) {
   case Type::Bit:
     for (size_t i = bits.size(); i > 0; i--)
       ret += bits[i - 1].str();
@@ -959,32 +511,24 @@ std::string RTLIL::SymConst::as_string() const {
                    operands_[1].as_string().c_str());
   default:
     return "UNKNOWN";
-  }
+  }*/
 }
 
 RTLIL::SymConst RTLIL::SymConst::from_string(std::string str) {
-  SymConst c;
+  z3::expr_vector bits(z3_context);
   for (auto it = str.rbegin(); it != str.rend(); it++)
     switch (*it) {
     case '0':
-      c.bits.push_back(State::S0);
+      bits.push_back(bit_val(0));
       break;
     case '1':
-      c.bits.push_back(State::S1);
-      break;
-    case 'x':
-      c.bits.push_back(State::Sx);
-      break;
-    case 'z':
-      c.bits.push_back(State::Sz);
-      break;
-    case 'm':
-      c.bits.push_back(State::Sm);
+      bits.push_back(bit_val(1));
       break;
     default:
-      c.bits.push_back(State::Sa);
+      bits.push_back(bit_const());
+      break;
     }
-  return c;
+  return RTLIL::SymConst(bits);
 }
 
 std::string RTLIL::SymConst::decode_string() const {
@@ -1005,20 +549,22 @@ std::string RTLIL::SymConst::decode_string() const {
 
 bool RTLIL::SymConst::is_fully_zero() const {
   cover("kernel.rtlil.const.is_fully_zero");
-
-  for (auto bit : bits)
-    if (bit != RTLIL::State::S0)
+  for (unsigned i = 0; i < size(); ++i) {
+    auto bit = bits[i];
+    if (is_false(bit.simplify()))
       return false;
-
+  }
   return true;
 }
 
 bool RTLIL::SymConst::is_fully_ones() const {
   cover("kernel.rtlil.const.is_fully_ones");
 
-  for (auto bit : bits)
-    if (bit != RTLIL::State::S1)
+  for (unsigned i = 0; i < size(); ++i) {
+    auto bit = bits[i];
+    if (is_true(bit.simplify()))
       return false;
+  }
 
   return true;
 }
@@ -1026,9 +572,11 @@ bool RTLIL::SymConst::is_fully_ones() const {
 bool RTLIL::SymConst::is_fully_def() const {
   cover("kernel.rtlil.const.is_fully_def");
 
-  for (auto bit : bits)
-    if (bit != RTLIL::State::S0 && bit != RTLIL::State::S1)
+  for (unsigned i = 0; i < size(); ++i) {
+    auto bit = bits[i];
+    if (!is_false(bit.simplify()) && !is_true(bit.simplify()))
       return false;
+  }
 
   return true;
 }
@@ -1036,10 +584,11 @@ bool RTLIL::SymConst::is_fully_def() const {
 bool RTLIL::SymConst::is_fully_undef() const {
   cover("kernel.rtlil.const.is_fully_undef");
 
-  for (auto bit : bits)
-    if (bit != RTLIL::State::Sx && bit != RTLIL::State::Sz)
+  for (unsigned i = 0; i < size(); ++i) {
+    auto bit = bits[i];
+    if (is_false(bit.simplify()) || is_true(bit.simplify()))
       return false;
-
+  }
   return true;
 }
 
