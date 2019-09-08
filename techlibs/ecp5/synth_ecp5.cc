@@ -71,10 +71,10 @@ struct SynthEcp5Pass : public ScriptPass
 		log("        do not use flipflops with CE in output netlist\n");
 		log("\n");
 		log("    -nobram\n");
-		log("        do not use BRAM cells in output netlist\n");
+		log("        do not use block RAM cells in output netlist\n");
 		log("\n");
-		log("    -nodram\n");
-		log("        do not use distributed RAM cells in output netlist\n");
+		log("    -nolutram\n");
+		log("        do not use LUT RAM cells in output netlist\n");
 		log("\n");
 		log("    -nowidelut\n");
 		log("        do not use PFU muxes to implement LUTs larger than LUT4s\n");
@@ -96,7 +96,7 @@ struct SynthEcp5Pass : public ScriptPass
 	}
 
 	string top_opt, blif_file, edif_file, json_file;
-	bool noccu2, nodffe, nobram, nodram, nowidelut, flatten, retime, abc2, abc9, vpr;
+	bool noccu2, nodffe, nobram, nolutram, nowidelut, flatten, retime, abc2, abc9, vpr;
 
 	void clear_flags() YS_OVERRIDE
 	{
@@ -107,7 +107,7 @@ struct SynthEcp5Pass : public ScriptPass
 		noccu2 = false;
 		nodffe = false;
 		nobram = false;
-		nodram = false;
+		nolutram = false;
 		nowidelut = false;
 		flatten = true;
 		retime = false;
@@ -172,11 +172,11 @@ struct SynthEcp5Pass : public ScriptPass
 				nobram = true;
 				continue;
 			}
-			if (args[argidx] == "-nodram") {
-				nodram = true;
+			if (args[argidx] == "-nolutram" || /*deprecated alias*/ args[argidx] == "-nodram") {
+				nolutram = true;
 				continue;
 			}
-			if (args[argidx] == "-nowidelut" || args[argidx] == "-nomux") {
+			if (args[argidx] == "-nowidelut" || /*deprecated alias*/ args[argidx] == "-nomux") {
 				nowidelut = true;
 				continue;
 			}
@@ -231,23 +231,27 @@ struct SynthEcp5Pass : public ScriptPass
 			run("synth -run coarse");
 		}
 
-		if (!nobram && check_label("bram", "(skip if -nobram)"))
+		if (!nobram && check_label("map_bram", "(skip if -nobram)"))
 		{
 			run("memory_bram -rules +/ecp5/bram.txt");
 			run("techmap -map +/ecp5/brams_map.v");
 		}
 
-		if (!nodram && check_label("dram", "(skip if -nodram)"))
+		if (!nolutram && check_label("map_lutram", "(skip if -nolutram)"))
 		{
-			run("memory_bram -rules +/ecp5/dram.txt");
-			run("techmap -map +/ecp5/drams_map.v");
+			run("memory_bram -rules +/ecp5/lutram.txt");
+			run("techmap -map +/ecp5/lutrams_map.v");
 		}
 
-		if (check_label("fine"))
+		if (check_label("map_ffram"))
 		{
 			run("opt -fast -mux_undef -undriven -fine");
 			run("memory_map");
 			run("opt -undriven -fine");
+		}
+
+		if (check_label("map_gates"))
+		{
 			if (noccu2)
 				run("techmap");
 			else
@@ -267,6 +271,8 @@ struct SynthEcp5Pass : public ScriptPass
 			run("opt_expr -undriven -mux_undef");
 			run("simplemap");
 			run("ecp5_ffinit");
+			run("ecp5_gsr");
+			run("opt_clean");
 		}
 
 		if (check_label("map_luts"))
@@ -274,12 +280,17 @@ struct SynthEcp5Pass : public ScriptPass
 			if (abc2 || help_mode) {
 				run("abc", "      (only if -abc2)");
 			}
-			run("techmap -map +/ecp5/latches_map.v");
+			std::string techmap_args = "-map +/ecp5/latches_map.v";
+			if (abc9)
+				techmap_args += " -map +/ecp5/abc_map.v -max_iter 1";
+			run("techmap " + techmap_args);
+
 			if (abc9) {
 				if (nowidelut)
 					run("abc9 -lut +/ecp5/abc_5g_nowide.lut -box +/ecp5/abc_5g.box -W 200");
 				else
 					run("abc9 -lut +/ecp5/abc_5g.lut -box +/ecp5/abc_5g.box -W 200");
+				run("techmap -map +/ecp5/abc_unmap.v");
 			} else {
 				if (nowidelut)
 					run("abc -lut 4 -dress");

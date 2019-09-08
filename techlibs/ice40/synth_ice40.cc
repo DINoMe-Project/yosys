@@ -183,7 +183,7 @@ struct SynthIce40Pass : public ScriptPass
 				continue;
 			}
 			if (args[argidx] == "-dffe_min_ce_use" && argidx+1 < args.size()) {
-				min_ce_use = std::stoi(args[++argidx]);
+				min_ce_use = atoi(args[++argidx].c_str());
 				continue;
 			}
 			if (args[argidx] == "-nobram") {
@@ -238,7 +238,14 @@ struct SynthIce40Pass : public ScriptPass
 	{
 		if (check_label("begin"))
 		{
-			run("read_verilog -lib -D_ABC +/ice40/cells_sim.v");
+			std::string define;
+			if (device_opt == "lp")
+				define = "-D ICE40_LP";
+			else if (device_opt == "u")
+				define = "-D ICE40_U";
+			else
+				define = "-D ICE40_HX";
+			run("read_verilog -icells " + define + " -lib +/ice40/cells_sim.v");
 			run(stringf("hierarchy -check %s", help_mode ? "-top <top>" : top_opt.c_str()));
 			run("proc");
 		}
@@ -275,14 +282,14 @@ struct SynthIce40Pass : public ScriptPass
 			run("opt_clean");
 		}
 
-		if (!nobram && check_label("bram", "(skip if -nobram)"))
+		if (!nobram && check_label("map_bram", "(skip if -nobram)"))
 		{
 			run("memory_bram -rules +/ice40/brams.txt");
 			run("techmap -map +/ice40/brams_map.v");
 			run("ice40_braminit");
 		}
 
-		if (check_label("map"))
+		if (check_label("map_ffram"))
 		{
 			run("opt -fast -mux_undef -undriven -fine");
 			run("memory_map");
@@ -293,8 +300,10 @@ struct SynthIce40Pass : public ScriptPass
 		{
 			if (nocarry)
 				run("techmap");
-			else
+			else {
+				run("ice40_wrapcarry");
 				run("techmap -map +/techmap.v -map +/ice40/arith_map.v");
+			}
 			if (retime || help_mode)
 				run(abc + " -dff", "(only if -retime)");
 			run("ice40_opt");
@@ -309,7 +318,7 @@ struct SynthIce40Pass : public ScriptPass
 				run("opt_merge");
 				run(stringf("dff2dffe -unmap-mince %d", min_ce_use));
 			}
-			run("techmap -D NO_LUT -map +/ice40/cells_map.v");
+			run("techmap -D NO_LUT -D NO_ADDER -map +/ice40/cells_map.v");
 			run("opt_expr -mux_undef");
 			run("simplemap");
 			run("ice40_ffinit");
@@ -342,9 +351,9 @@ struct SynthIce40Pass : public ScriptPass
 				else
 					run(abc + " -dress -lut 4", "(skip if -noabc)");
 			}
+			run("techmap -D NO_LUT -map +/ice40/cells_map.v");
 			run("clean");
-			run("ice40_unlut");
-			run("opt_lut -dlogic SB_CARRY:I0=1:I1=2:CI=3");
+			run("opt_lut -dlogic SB_CARRY:I0=2:I1=1:CI=0");
 		}
 
 		if (check_label("map_cells"))

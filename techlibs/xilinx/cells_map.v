@@ -24,9 +24,9 @@ module _90_dff_nn0_to_np0 (input D, C, R, output Q); \$_DFF_NP0_  _TECHMAP_REPLA
 (* techmap_celltype = "$_DFF_PN0_" *)
 module _90_dff_pn0_to_pp0 (input D, C, R, output Q); \$_DFF_PP0_  _TECHMAP_REPLACE_ (.D(D), .Q(Q), .C(C), .R(~R)); endmodule
 (* techmap_celltype = "$_DFF_NN1_" *)
-module _90_dff_nn1_to_np1 (input D, C, R, output Q); \$_DFF_NP1   _TECHMAP_REPLACE_ (.D(D), .Q(Q), .C(C), .R(~R)); endmodule
+module _90_dff_nn1_to_np1 (input D, C, R, output Q); \$_DFF_NP1_   _TECHMAP_REPLACE_ (.D(D), .Q(Q), .C(C), .R(~R)); endmodule
 (* techmap_celltype = "$_DFF_PN1_" *)
-module _90_dff_pn1_to_pp1 (input D, C, R, output Q); \$_DFF_PP1   _TECHMAP_REPLACE_ (.D(D), .Q(Q), .C(C), .R(~R)); endmodule
+module _90_dff_pn1_to_pp1 (input D, C, R, output Q); \$_DFF_PP1_   _TECHMAP_REPLACE_ (.D(D), .Q(Q), .C(C), .R(~R)); endmodule
 
 module \$__SHREG_ (input C, input D, input E, output Q);
   parameter DEPTH = 0;
@@ -331,7 +331,6 @@ module \$_MUX16_ (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, S, T, U, V, Y)
 endmodule
 `endif
 
-`ifndef _ABC
 module \$__XILINX_MUXF78 (O, I0, I1, I2, I3, S0, S1);
   output O;
   input I0, I1, I2, I3, S0, S1;
@@ -364,4 +363,3 @@ module \$__XILINX_MUXF78 (O, I0, I1, I2, I3, S0, S1);
   else
     MUXF8 mux8 (.I0(T0), .I1(T1), .S(S1), .O(O));
 endmodule
-`endif
