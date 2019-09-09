@@ -418,33 +418,23 @@ struct SymCellTypes {
                               const RTLIL::SymConst &arg3,
                               bool *errp = nullptr) {
     if (cell->type.in("$mux", "$pmux", "$_MUX_")) {
-      std::cerr << "mux" << arg1.to_expr() << arg2.to_expr() << arg3.to_expr()
-                << "\n";
-      z3::expr ret = arg1.to_expr();
+      z3::expr_vector ret = arg1.bits;
       size_t result_len = arg1.size();
-      assert(result_len>0);
+      assert(result_len > 0);
       assert(result_len * arg3.size() == arg2.size());
       for (int i = 0; i < arg3.size(); ++i) {
-        if(ret.is_bv()){
-          std::cerr<<"is bv"<<z3::ite(arg3[i].to_expr() == 1,
-                        arg2.extract(i * result_len, result_len).to_expr(), ret);
-        }else{
-          std::cerr<<"not bv";
-        }
         if (arg3[i].to_state() == State::S1) {
           return arg2.extract(i * result_len, result_len);
         }
         if (arg3[i].to_state() == State::S0)
           continue;
-        ret = z3::ite(arg3[i].to_expr() == 1,
-                      arg2.extract(i * result_len, result_len).to_expr(), ret);
-        std::cerr << "curret ret=" << "\n"<<i*result_len<<","<<":";
-        std::cerr<<arg2.extract(i * result_len, result_len).to_expr();
-
-        std::cerr << ret.to_string() << "\n";
+        for (int j = 0; j < result_len; ++j) {
+          ret[j] = (arg3[i].to_expr() & arg2[j + i * result_len].to_expr()) |
+                   ((~arg3[i].to_expr()) & arg1[j].to_expr());
+        }
       }
       std::cerr << "mux end, ret.to_string=\n";
-      std::cerr << "=" << ret.to_string() << "\n";
+      std::cerr << "=" << ret << "\n";
       return ret;
     }
 

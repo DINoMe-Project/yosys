@@ -12,7 +12,7 @@ static int name_index = 0;
 namespace RTLIL {
 class SymConst;
 static bool prove(const z3::expr &e) {
-  log("prove\n");
+  // log("prove\n");
   z3::context &c = e.ctx();
   z3::solver s(c);
   s.add(!e);
@@ -76,6 +76,7 @@ public:
   }
   std::string to_string() const { return val_.simplify().to_string(); }
   const z3::expr &to_expr() const { return val_.simplify(); }
+
   std::string str() const { return to_string(); }
   StateSym(const State &state, const SigBit &b) : val_(bit_val(0)) {
     op_ = Type::Const;
@@ -215,7 +216,7 @@ public:
     }
   }
   bool operator==(const StateSym &other) const {
-    return (other.val_.to_string() == val_.to_string());
+    return prove(other.val_ == val_);
   }
   bool operator!=(const StateSym &other) const { return !(other == *this); }
   bool is_const() const { return val_.is_bv() && val_.is_app(); }
@@ -228,6 +229,16 @@ struct SymConst {
   enum Type : unsigned char { Bit, Add };
   Type type_;
   size_t size() const { return bits.size(); }
+  z3::expr_vector reversed_bits() const {
+    z3::expr_vector new_bits = bits;
+    int size = bits.size();
+    for (int i = 0; i < size; ++i) {
+      new_bits[i] = bits[size - i];
+    }
+    return new_bits;
+  }
+  z3::expr to_expr() const { return z3::concat(reversed_bits()).simplify(); }
+
   SymConst() : bits(z3_context) {}
   SymConst(std::string str, const RTLIL::SigSpec &sig = RTLIL::SigSpec());
   SymConst(int val, int width = 1,
@@ -256,7 +267,6 @@ struct SymConst {
   SymConst(const z3::expr_vector &_bits,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec())
       : bits(_bits), signal(sig) {}
-  z3::expr to_expr() const { return z3::concat(bits).simplify(); }
   SymConst(const std::vector<bool> &bits,
            const RTLIL::SigSpec &sig = RTLIL::SigSpec());
 
@@ -264,7 +274,7 @@ struct SymConst {
     z3::expr e = ee.simplify();
     if (e.is_bv()) {
       assert(e.get_sort().bv_size() == size);
-      for (int i = size - 1; i >= 0; --i) {
+      for (int i = 0; i < size; ++i) {
         bits.push_back(e.extract(i, i).simplify());
       }
     } else {
@@ -275,7 +285,7 @@ struct SymConst {
   SymConst(const z3::expr &e) : bits(z3_context) {
     if (e.is_bv()) {
       int size = e.get_sort().bv_size();
-      for (int i = size - 1; i >= 0; --i) {
+      for (int i = 0; i < size; ++i) {
         bits.push_back(e.extract(i, i));
       }
     } else {
@@ -283,10 +293,6 @@ struct SymConst {
     }
   }
   void push_back(const StateSym &s) { bits.push_back(s.val_); }
-  static SymConst CreateAdd(const SymConst &a, const SymConst &b) {
-    assert(a.size() == b.size());
-    return SymConst(a.to_expr() + b.to_expr());
-  }
   RTLIL::Const to_const() {
     RTLIL::Const c;
     for (int i = 0; i < size(); ++i) {
@@ -311,7 +317,6 @@ struct SymConst {
   bool is_fully_ones() const;
   bool is_fully_def() const;
   bool is_fully_undef() const;
-
   inline RTLIL::SymConst
   extract(int offset, int len = 1,
           RTLIL::StateSym padding = RTLIL::State::S0) const {
@@ -342,7 +347,7 @@ struct SymConst {
     }
     return h;
   }
-};
+}; // namespace RTLIL
 
 RTLIL::SymConst SymConst_not(const RTLIL::SymConst &arg1,
                              const RTLIL::SymConst &arg2, bool signed1,

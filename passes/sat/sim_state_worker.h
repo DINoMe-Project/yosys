@@ -85,7 +85,7 @@ struct SimInstance {
   SimInstance(SimShared *shared, Module *module, Cell *instance = nullptr,
               SimInstance *parent = nullptr)
       : shared(shared), module(module), instance(instance), parent(parent),
-        sigmap(module){
+        sigmap(module) {
     if (parent) {
       log_assert(parent->children.count(instance) == 0);
       parent->children[instance] = this;
@@ -248,7 +248,7 @@ struct SimInstance {
     log_assert(GetSize(sig) == GetSize(value));
     for (int i = 0; i < GetSize(sig); i++) {
       if (!(state_nets.at(sig[i]) == value[i])) {
-        //log("%s, %s \n", state_nets.at(sig[i]).to_string().c_str(),
+        // log("%s, %s \n", state_nets.at(sig[i]).to_string().c_str(),
         //    value[i].to_string().c_str());
         state_nets.at(sig[i]) = value[i];
         dirty_bits.insert(sig[i]);
@@ -394,10 +394,10 @@ struct SimInstance {
       dirty_bits.clear();
 
       if (!queue_cells.empty()) {
-        for (auto cell : queue_cells){
+        for (auto cell : queue_cells) {
           update_cell(cell);
-          std::cerr<<"finish update cell\n";
-}
+          std::cerr << "finish update cell\n";
+        }
         queue_cells.clear();
         continue;
       }
@@ -438,7 +438,7 @@ struct SimInstance {
 
         if (set_state(cell->getPort("\\Q"), ff.past_d)) {
           log("%s is changed to ", log_signal(cell->getPort("\\Q")));
-          log("%s\n",ff.past_d.as_string().c_str());
+          log("%s\n", ff.past_d.as_string().c_str());
           did_something = true;
         }
       }
@@ -642,7 +642,7 @@ struct SimInstance {
 
 struct SimStateWorker : SimShared {
   SimInstance *top = nullptr;
-  bool update_dff=true;
+  bool update_dff = true;
   std::ofstream vcdfile;
   pool<IdString> clock, clockn, reset, resetn;
 
