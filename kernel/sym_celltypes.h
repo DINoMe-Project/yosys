@@ -433,8 +433,8 @@ struct SymCellTypes {
                    ((~arg3[i].to_expr()) & arg1[j].to_expr());
         }
       }
-      std::cerr << "mux end, ret.to_string=\n";
-      std::cerr << "=" << ret << "\n";
+    //  std::cerr << "mux end, ret.to_string=\n";
+      //std::cerr << "=" << ret << "\n";
       return ret;
     }
 

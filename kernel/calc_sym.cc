@@ -32,7 +32,7 @@ z3::context z3_context;
 static z3::expr extend_u0(const z3::expr &e, unsigned width, bool is_signed) {
   unsigned old_width = e.is_bv() ? e.get_sort().bv_size() : 1;
   if (width < old_width) {
-//    std::cerr << width << "," << old_width << e << "\n";
+    std::cerr << width << "," << old_width << e << "\n";
     return e.extract(width - 1, 0).simplify();
   }
   if (width - old_width == 0)
@@ -42,8 +42,8 @@ static z3::expr extend_u0(const z3::expr &e, unsigned width, bool is_signed) {
     assert(e.is_bool());
     ee = z3::ite(e, RTLIL::bit_val(1), RTLIL::bit_val(0));
   }
-//  std::cerr << "extend" << ee << "is_signed=" << is_signed
-  //          << ", width - old_width" << width - old_width;
+ std::cerr << "extend" << ee << "is_signed=" << is_signed
+            << ", width - old_width" << width - old_width;
   z3::expr ret = is_signed ? z3::sext(ee, width - old_width).simplify()
                            : z3::zext(ee, width - old_width).simplify();
   //std::cerr << "return " << ret;
@@ -71,7 +71,7 @@ RTLIL::SymConst RTLIL::SymConst_or(const RTLIL::SymConst &arg1,
                                    bool signed2, int result_len) {
   auto a = extend_u0(arg1.to_expr(), result_len, false);
   auto b = extend_u0(arg2.to_expr(), result_len, false);
-  return RTLIL::SymConst(a | b);
+  return  RTLIL::SymConst(a | b);
   // return logic_wrapper(logic_or, arg1, arg2, signed1, signed2, result_len);
 }
 

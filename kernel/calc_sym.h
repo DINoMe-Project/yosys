@@ -230,14 +230,18 @@ struct SymConst {
   Type type_;
   size_t size() const { return bits.size(); }
   z3::expr_vector reversed_bits() const {
-    z3::expr_vector new_bits = bits;
+    z3::expr_vector new_bits(z3_context);
     int size = bits.size();
     for (int i = 0; i < size; ++i) {
-      new_bits[i] = bits[size - i];
+      new_bits.push_back(bits[size - i-1]);
     }
     return new_bits;
   }
-  z3::expr to_expr() const { return z3::concat(reversed_bits()).simplify(); }
+  z3::expr to_expr() const {
+  //  std::cerr<<"\n"<<z3::concat(bits).simplify()<<"\n"<<z3::concat(reversed_bits()).simplify();
+  //  assert(bits.size()==1);
+    return z3::concat(reversed_bits()).simplify();
+  }
 
   SymConst() : bits(z3_context) {}
   SymConst(std::string str, const RTLIL::SigSpec &sig = RTLIL::SigSpec());
@@ -275,7 +279,7 @@ struct SymConst {
     if (e.is_bv()) {
       assert(e.get_sort().bv_size() == size);
       for (int i = 0; i < size; ++i) {
-        bits.push_back(e.extract(i, i).simplify());
+        bits.push_back(e.extract(size-i-1, size-i-1).simplify());
       }
     } else {
       assert(size == 1);
@@ -286,7 +290,7 @@ struct SymConst {
     if (e.is_bv()) {
       int size = e.get_sort().bv_size();
       for (int i = 0; i < size; ++i) {
-        bits.push_back(e.extract(i, i));
+        bits.push_back(e.extract(size-i-1, size-i-1));
       }
     } else {
       bits.push_back(z3::ite(e, bit_val(1), bit_val(0)));
@@ -324,8 +328,8 @@ struct SymConst {
     z3::expr_vector e(z3_context);
     int size = this->size();
     for (int i = 0; i < len; ++i) {
-      int pos = size - offset - len + i;
-      if (pos < 0) {
+      int pos = offset + len - i-1;
+      if (pos >= size) {
         e.push_back(padding.to_expr());
       } else
         e.push_back(bits[pos]);

@@ -1326,8 +1326,8 @@ struct Smt2Backend : public Backend {
         continue;
 
       log("Creating SMT-LIBv2 representation of module %s.\n", log_id(module));
-			sim_state_worker.update_dff=false;
-			sim_state_worker.run(topmod, 1);
+			//sim_state_worker.update_dff=false;
+		//	sim_state_worker.run(topmod, 1);
       Smt2Worker worker(module,& sim_state_worker, bvmode, memmode, wiresmode,
                         verbose, statebv, statedt, forallmode, mod_stbv_width,
                         mod_clk_cache);
