@@ -64,16 +64,22 @@ struct SmvWorker {
 
   int idcounter;
   dict<IdString, shared_str> idcache;
+  pool<RTLIL::IdString> symbolic_names_;
   pool<shared_str> used_names;
   vector<shared_str> strbuf;
-
+  pool<Wire *> need_declare_vars;
+  pool<Wire *> declared_vars;
   pool<Wire *> partial_assignment_wires;
   dict<SigBit, std::pair<const char *, int>> partial_assignment_bits;
-  vector<string> inputvars, vars, definitions, assignments, invarspecs;
-
+  vector<string> inputvars, vars, frozenvars, definitions, assignments,
+      init_assignments, invarspecs;
+  void Defined(Wire *w) {
+    need_declare_vars.erase(w);
+    declared_vars.insert(w);
+  }
   const char *cid() {
     while (true) {
-      shared_str s(stringf("_%d", idcounter++));
+      shared_str s(stringf("__#%d", idcounter++));
       if (!used_names.count(s)) {
         used_names.insert(s);
         return s.c_str();
@@ -117,9 +123,10 @@ struct SmvWorker {
     return idcache.at(id).c_str();
   }
 
-  SmvWorker(RTLIL::Module *module, bool verbose, std::ostream &f)
+  SmvWorker(const pool<RTLIL::IdString> &symbolic_names, RTLIL::Module *module,
+            bool verbose, std::ostream &f)
       : ct(module->design), sigmap(module), module(module), f(f),
-        verbose(verbose), idcounter(0) {
+        symbolic_names_(symbolic_names), verbose(verbose), idcounter(0) {
     for (auto mod : module->design->modules())
       cid(mod->name, true);
 
@@ -176,6 +183,8 @@ struct SmvWorker {
       if (!s.empty())
         s = " :: " + s;
       if (c.wire) {
+        if (declared_vars.count(c.wire) == 0)
+          need_declare_vars.insert(c.wire);
         if (c.offset != 0 || c.width != c.wire->width)
           s = stringf("%s[%d:%d]", cid(c.wire->name), c.offset + c.width - 1,
                       c.offset) +
@@ -198,8 +207,12 @@ struct SmvWorker {
           s = stringf("signed(resize(%s, %d))", s.c_str(), width);
         else
           s = stringf("resize(signed(%s), %d)", s.c_str(), width);
-      } else
+      } else {
+        if (s.length() == 0) {
+          log_error("error length %s\n", log_signal(sig));
+        }
         s = stringf("resize(%s, %d)", s.c_str(), width);
+      }
     } else if (is_signed)
       s = stringf("signed(%s)", s.c_str());
     else if (count_chunks > 1)
@@ -217,13 +230,20 @@ struct SmvWorker {
     return rvalue(sig, width, is_signed);
   }
 
-  const char *lvalue(SigSpec sig) {
+  const char *lvalue(SigSpec sig, bool need_def = false) {
     sigmap.apply(sig);
-
-    if (sig.is_wire())
+    std::cerr << "lval is " << log_signal(sig) << "\n";
+    if (sig.is_wire()) {
+      if (!need_def)
+        Defined(sig.as_wire());
       return rvalue(sig);
-
+    }
     const char *temp_id = cid();
+    if (need_def) {
+      vars.push_back(stringf("%s: unsigned word[%d]; -- %s", temp_id,
+                             sig.size(), log_signal(sig)));
+    }
+
     //		f << stringf("    %s : unsigned word[%d]; -- %s\n", temp_id,
     // GetSize(sig), log_signal(sig));
     //  std::cerr << (stringf("%s := unsigned(%d); %s", temp_id, sig.size(),
@@ -240,17 +260,28 @@ struct SmvWorker {
   }
 
   void run() {
-    f << stringf("MODULE %s\n", cid(module->name));
+    f << stringf("MODULE main -- %s\n", cid(module->name));
 
     for (auto wire : module->wires()) {
       SigSpec sig = sigmap(wire);
       if (SigSpec(wire) != sig)
         partial_assignment_wires.insert(wire);
 
-      if (wire->port_input)
-        inputvars.push_back(stringf("%s : unsigned word[%d]; -- %s",
-                                    cid(wire->name), wire->width,
-                                    log_id(wire)));
+      if (wire->port_input) {
+
+        if (wire->name.in(symbolic_names_)) {
+          frozenvars.push_back(
+              stringf("%s : unsigned word[%d]; -- %s symbolized",
+                      cid(wire->name), wire->width, log_id(wire)));
+          // assignments.push_back(stringf("next(%s) := %s; -- %s symbolized",
+          //                            cid(wire->name), cid(wire->name)));
+        } else {
+          inputvars.push_back(stringf("%s : unsigned word[%d]; -- %s",
+                                      cid(wire->name), wire->width,
+                                      log_id(wire)));
+        }
+        Defined(wire);
+      }
 
       if (wire->attributes.count("\\init")) {
         // log("wire->attributes.count wire %s= %s\n", log_signal(wire),
@@ -263,14 +294,19 @@ struct SmvWorker {
           lsig.append_bit(sig[i]);
           rsig.append_bit(isig[i]);
         }
-        assignments.push_back(
-            stringf("init(%s) := %s;", lvalue(lsig), rvalue(rsig)));
+        if (lsig.size() == 0)
+          continue;
+        need_declare_vars.insert(wire);
+        init_assignments.push_back(stringf("init(%s) := %s; --%s",
+                                           lvalue(lsig, true), rvalue(rsig),
+                                           log_signal(lsig)));
+
       }
     }
 
     for (auto cell : module->cells()) {
       // FIXME: $slice, $concat, $mem
-      // log("cell type = %s", log_id(cell->type));
+      log("cell type = %s", log_id(cell->type));
       if (cell->type.in("$assert")) {
         SigSpec sig_a = cell->getPort("\\A");
         SigSpec sig_en = cell->getPort("\\EN");
@@ -367,15 +403,15 @@ struct SmvWorker {
               stringf("resize(%s %s %s[%d:0], %d)", expr_a.c_str(), op.c_str(),
                       rvalue_u(sig_b), shift_b_width - 1, width_y);
           if (shift_b_width < GetSize(sig_b))
-            expr = stringf("%s[%d:%d] != %s ? %s : %s", rvalue_u(sig_b),
-                           GetSize(sig_b) - 1, shift_b_width,
-                           ConstWordZero(GetSize(sig_b) - shift_b_width, "ud").c_str(),
-                           ConstWordZero(width_y, "ud").c_str(), expr.c_str());
+            expr = stringf(
+                "%s[%d:%d] != %s ? %s : %s", rvalue_u(sig_b),
+                GetSize(sig_b) - 1, shift_b_width,
+                ConstWordZero(GetSize(sig_b) - shift_b_width, "ud").c_str(),
+                ConstWordZero(width_y, "ud").c_str(), expr.c_str());
         }
 
         definitions.push_back(
             stringf("%s := %s;", lvalue(cell->getPort("\\Y")), expr.c_str()));
-
         continue;
       }
 
@@ -599,19 +635,18 @@ struct SmvWorker {
           expr += stringf("bool(%s) ? %s : ", rvalue(sig_s[i]),
                           rvalue(sig_b.extract(i * width, width)));
         expr += rvalue(sig_a);
-
         definitions.push_back(
             stringf("%s := %s;", lvalue(cell->getPort("\\Y")), expr.c_str()));
         continue;
       }
 
       if (cell->type == "$dff") {
-        vars.push_back(stringf(
-            "%s : unsigned word[%d]; -- %s", lvalue(cell->getPort("\\Q")),
-            GetSize(cell->getPort("\\Q")), log_signal(cell->getPort("\\Q"))));
-        assignments.push_back(stringf("next(%s) := %s;",
-                                      lvalue(cell->getPort("\\Q")),
-                                      rvalue(cell->getPort("\\D"))));
+        auto lval = lvalue(cell->getPort("\\Q"));
+        vars.push_back(stringf("%s : unsigned word[%d]; -- %s", lval,
+                               GetSize(cell->getPort("\\Q")),
+                               log_signal(cell->getPort("\\Q"))));
+        assignments.push_back(
+            stringf("next(%s) := %s;", lval, rvalue(cell->getPort("\\D"))));
         continue;
       }
 
@@ -784,11 +819,26 @@ struct SmvWorker {
           expr = rvalue(sig) + expr;
         }
       }
-
+      Defined(wire);
       definitions.push_back(
           stringf("%s := %s;", cid(wire->name), expr.c_str()));
     }
-
+    if (need_declare_vars.size()) {
+      for (auto wire : need_declare_vars) {
+        if (!wire->name.in(symbolic_names_)) {
+          init_assignments.push_back(stringf(
+              "init(%s) := %s; --%s: auto init variable", cid(wire->name),
+              ConstWordZero(wire->width).c_str(), log_id(wire->name)));
+          vars.push_back(
+              stringf("%s : unsigned word[%d]; -- %s : auto init variable",
+                      cid(wire->name), wire->width, log_id(wire->name)));
+        } else {
+          frozenvars.push_back(
+              stringf("%s : unsigned word[%d]; -- %s : symbolic variable",
+                      cid(wire->name), wire->width, log_id(wire->name)));
+        }
+      }
+    }
     if (!inputvars.empty()) {
       f << stringf("  IVAR\n");
       for (const string &line : inputvars)
@@ -800,12 +850,22 @@ struct SmvWorker {
       for (const string &line : vars)
         f << stringf("    %s\n", line.c_str());
     }
+    if (!frozenvars.empty()) {
+      f << "  FROZENVAR\n";
+      for (const string &line : frozenvars)
+        f << stringf("    %s\n", line.c_str());
+    }
 
     if (!definitions.empty()) {
       f << stringf("  DEFINE\n");
       for (const string &line : definitions) {
         f << stringf("    %s\n", line.c_str());
       }
+    }
+    if (!init_assignments.empty()) {
+      f << stringf("  ASSIGN\n");
+      for (const string &line : init_assignments)
+        f << stringf("    %s\n", line.c_str());
     }
 
     if (!assignments.empty()) {
@@ -847,7 +907,7 @@ struct SmvBackend : public Backend {
                RTLIL::Design *design) YS_OVERRIDE {
     std::ifstream template_f;
     bool verbose = false;
-
+    pool<IdString> symbolic_names;
     log_header(design, "Executing SMV backend.\n");
 
     size_t argidx;
@@ -860,6 +920,11 @@ struct SmvBackend : public Backend {
       }
       if (args[argidx] == "-verbose") {
         verbose = true;
+        continue;
+      }
+      if (args[argidx] == "-symbol") {
+        string var_name = args[++argidx];
+        symbolic_names.insert("\\" + var_name);
         continue;
       }
       break;
@@ -898,7 +963,7 @@ struct SmvBackend : public Backend {
                           yosys_version_str);
 
             log("Creating SMV representation of module %s.\n", log_id(module));
-            SmvWorker worker(module, verbose, *f);
+            SmvWorker worker(symbolic_names, module, verbose, *f);
             worker.run();
 
             *f << stringf("-- end of yosys output\n");
@@ -917,7 +982,7 @@ struct SmvBackend : public Backend {
 
       for (auto module : modules) {
         log("Creating SMV representation of module %s.\n", log_id(module));
-        SmvWorker worker(module, verbose, *f);
+        SmvWorker worker(symbolic_names, module, verbose, *f);
         worker.run();
       }
 
