@@ -1646,3 +1646,65 @@ run	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void run(Mo
 SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^struct SimPass : public Pass {$/;"	struct	line:739	file:
 SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimPass() : Pass("sim_state", "simulate the circuit") {}$/;"	function	line:740	struct:SimPass	signature:()
 SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^} SimPass;$/;"	variable	line:855	typeref:struct:SimPass
+Smt2Worker	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^struct Smt2Worker {$/;"	struct	line:30	file:
+ct	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  CellTypes ct;$/;"	member	line:31	struct:Smt2Worker	file:
+sigmap	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  SigMap sigmap;$/;"	member	line:32	struct:Smt2Worker	file:
+module	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  RTLIL::Module *module;$/;"	member	line:33	struct:Smt2Worker	file:
+bvmode	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+memmode	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+wiresmode	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+verbose	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+statebv	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+statedt	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+forallmode	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool bvmode, memmode, wiresmode, verbose, statebv, statedt, forallmode;$/;"	member	line:34	struct:Smt2Worker	file:
+mod_stbv_width	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  dict<IdString, int> &mod_stbv_width;$/;"	member	line:35	struct:Smt2Worker	file:
+idcounter	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  int idcounter = 0, statebv_width = 0;$/;"	member	line:36	struct:Smt2Worker	file:
+statebv_width	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  int idcounter = 0, statebv_width = 0;$/;"	member	line:36	struct:Smt2Worker	file:
+global_decl_str	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<std::string, int> global_decl_str;$/;"	member	line:37	struct:Smt2Worker	file:
+decl_bits	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::vector<std::string> decl_bits,decls, trans, hier, dtmembers;$/;"	member	line:38	struct:Smt2Worker	file:
+decls	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::vector<std::string> decl_bits,decls, trans, hier, dtmembers;$/;"	member	line:38	struct:Smt2Worker	file:
+trans	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::vector<std::string> decl_bits,decls, trans, hier, dtmembers;$/;"	member	line:38	struct:Smt2Worker	file:
+hier	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::vector<std::string> decl_bits,decls, trans, hier, dtmembers;$/;"	member	line:38	struct:Smt2Worker	file:
+dtmembers	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::vector<std::string> decl_bits,decls, trans, hier, dtmembers;$/;"	member	line:38	struct:Smt2Worker	file:
+bit_driver	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<RTLIL::SigBit, RTLIL::Cell *> bit_driver;$/;"	member	line:39	struct:Smt2Worker	file:
+exported_cells	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::set<RTLIL::Cell *> exported_cells, hiercells, hiercells_queue;$/;"	member	line:40	struct:Smt2Worker	file:
+hiercells	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::set<RTLIL::Cell *> exported_cells, hiercells, hiercells_queue;$/;"	member	line:40	struct:Smt2Worker	file:
+hiercells_queue	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::set<RTLIL::Cell *> exported_cells, hiercells, hiercells_queue;$/;"	member	line:40	struct:Smt2Worker	file:
+recursive_cells	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<Cell *> recursive_cells, registers;$/;"	member	line:41	struct:Smt2Worker	file:
+registers	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<Cell *> recursive_cells, registers;$/;"	member	line:41	struct:Smt2Worker	file:
+symbolic_names	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<std::string,std::string> symbolic_names;$/;"	member	line:42	struct:Smt2Worker	file:
+trans_bits	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<SigBit> trans_bits, need_trans_bits;$/;"	member	line:43	struct:Smt2Worker	file:
+need_trans_bits	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<SigBit> trans_bits, need_trans_bits;$/;"	member	line:43	struct:Smt2Worker	file:
+clock_posedge	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<SigBit> clock_posedge, clock_negedge;$/;"	member	line:44	struct:Smt2Worker	file:
+clock_negedge	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  pool<SigBit> clock_posedge, clock_negedge;$/;"	member	line:44	struct:Smt2Worker	file:
+ex_state_eq	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  vector<string> ex_state_eq, ex_input_eq;$/;"	member	line:45	struct:Smt2Worker	file:
+ex_input_eq	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  vector<string> ex_state_eq, ex_input_eq;$/;"	member	line:45	struct:Smt2Worker	file:
+fcache	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<RTLIL::SigBit, std::pair<int, int>> fcache;$/;"	member	line:47	struct:Smt2Worker	file:
+memarrays	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<Cell *, int> memarrays;$/;"	member	line:48	struct:Smt2Worker	file:
+bvsizes	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::map<int, int> bvsizes;$/;"	member	line:49	struct:Smt2Worker	file:
+ids	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  dict<IdString, char *> ids;$/;"	member	line:50	struct:Smt2Worker	file:
+autoinit	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  bool autoinit;$/;"	member	line:51	struct:Smt2Worker	file:
+get_id	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  const char *get_id(IdString n) {$/;"	function	line:52	struct:Smt2Worker	signature:(IdString n)
+get_id	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  template <typename T> const char *get_id(T *obj) { return get_id(obj->name); }$/;"	function	line:64	struct:Smt2Worker	signature:(T *obj)
+makebits	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void makebits(std::string name, int width = 0,$/;"	function	line:66	struct:Smt2Worker	signature:(std::string name, int width = 0, std::string comment = std::string())
+Smt2Worker	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  Smt2Worker(RTLIL::Module *module, bool bvmode, bool memmode, bool wiresmode,$/;"	function	line:124	struct:Smt2Worker	signature:(RTLIL::Module *module, bool bvmode, bool memmode, bool wiresmode, bool verbose, bool statebv, bool statedt, bool forallmode, dict<IdString, int> &mod_stbv_width, dict<IdString, dict<IdString, pair<bool, bool>>> &mod_clk_cache,bool _autoinit=false)
+~Smt2Worker	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  ~Smt2Worker() {$/;"	function	line:215	struct:Smt2Worker	signature:()
+get_id	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  const char *get_id(Module *m) { return get_id(m->name); }$/;"	function	line:221	struct:Smt2Worker	signature:(Module *m)
+get_id	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  const char *get_id(Cell *c) { return get_id(c->name); }$/;"	function	line:223	struct:Smt2Worker	signature:(Cell *c)
+get_id	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  const char *get_id(Wire *w) { return get_id(w->name); }$/;"	function	line:225	struct:Smt2Worker	signature:(Wire *w)
+register_bool	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void register_bool(RTLIL::SigBit bit, int id) {$/;"	function	line:227	struct:Smt2Worker	signature:(RTLIL::SigBit bit, int id)
+register_bits	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void register_bits(RTLIL::SigSpec sig) {$/;"	function	line:236	struct:Smt2Worker	signature:(RTLIL::SigSpec sig)
+register_bv	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void register_bv(RTLIL::SigSpec sig, int id) {$/;"	function	line:241	struct:Smt2Worker	signature:(RTLIL::SigSpec sig, int id)
+register_boolvec	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void register_boolvec(RTLIL::SigSpec sig, int id) {$/;"	function	line:258	struct:Smt2Worker	signature:(RTLIL::SigSpec sig, int id)
+get_bool	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::string get_bool(RTLIL::SigBit bit, const char *state_name = "state") {$/;"	function	line:271	struct:Smt2Worker	signature:(RTLIL::SigBit bit, const char *state_name = Ó)
+get_bool	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::string get_bool(RTLIL::SigSpec sig, const char *state_name = "state") {$/;"	function	line:297	struct:Smt2Worker	signature:(RTLIL::SigSpec sig, const char *state_name = Ó)
+get_bv	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  std::string get_bv(RTLIL::SigSpec sig, const char *state_name = "state") {$/;"	function	line:301	struct:Smt2Worker	signature:(RTLIL::SigSpec sig, const char *state_name = Ó)
+export_gate	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void export_gate(RTLIL::Cell *cell, std::string expr) {$/;"	function	line:386	struct:Smt2Worker	signature:(RTLIL::Cell *cell, std::string expr)
+export_bvop	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void export_bvop(RTLIL::Cell *cell, std::string expr, char type = 0) {$/;"	function	line:416	struct:Smt2Worker	signature:(RTLIL::Cell *cell, std::string expr, char type = 0)
+export_reduce	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void export_reduce(RTLIL::Cell *cell, std::string expr, bool identity_val) {$/;"	function	line:478	struct:Smt2Worker	signature:(RTLIL::Cell *cell, std::string expr, bool identity_val)
+export_cell	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void export_cell(RTLIL::Cell *cell) {$/;"	function	line:503	struct:Smt2Worker	signature:(RTLIL::Cell *cell)
+run	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void run() {$/;"	function	line:939	struct:Smt2Worker	signature:()
+write	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  void write(std::ostream &f) {$/;"	function	line:1486	struct:Smt2Worker	signature:(std::ostream &f)
+Smt2Backend	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^struct Smt2Backend : public Backend {$/;"	struct	line:1552	file:
+Smt2Backend	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^  Smt2Backend() : Backend("smt2_trans", "write design to SMT-LIBv2 file") {}$/;"	function	line:1553	struct:Smt2Backend	signature:()
+Smt2Backend	/Users/ziqiaozhou/zzdiss/codes/yosys/backends/smt2/smt2_trans.cc	/^} Smt2Backend;$/;"	variable	line:1942	typeref:struct:Smt2Backend
