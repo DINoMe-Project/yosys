@@ -357,7 +357,7 @@ struct SvaFsm
 		for (int i = 0; i < GetSize(nodes); i++)
 		{
 			if (next_state_sig[i] != State::S0) {
-				clocking.addDff(NEW_ID, next_state_sig[i], state_wire[i], Const(0, 1));
+				clocking.addDff(NEW_ID, next_state_sig[i], state_wire[i], State::S0);
 			} else {
 				module->connect(state_wire[i], State::S0);
 			}
@@ -1666,7 +1666,20 @@ struct VerificSvaImporter
 				log("  importing SVA property at root cell %s (%s) at %s:%d.\n", root->Name(), root->View()->Owner()->Name(),
 						LineFile::GetFileName(root->Linefile()), LineFile::GetLineNo(root->Linefile()));
 
-			RTLIL::IdString root_name = module->uniquify(importer->mode_names || root->IsUserDeclared() ? RTLIL::escape_id(root->Name()) : NEW_ID);
+			bool is_user_declared = root->IsUserDeclared();
+
+			// FIXME
+			if (!is_user_declared) {
+				const char *name = root->Name();
+				for (int i = 0; name[i]; i++) {
+					if (i ? (name[i] < '0' || name[i] > '9') : (name[i] != 'i')) {
+						is_user_declared = true;
+						break;
+					}
+				}
+			}
+
+			RTLIL::IdString root_name = module->uniquify(importer->mode_names || is_user_declared ? RTLIL::escape_id(root->Name()) : NEW_ID);
 
 			// parse SVA sequence into trigger signal
 

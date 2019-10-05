@@ -1256,7 +1256,7 @@ def smt_check_sat():
     return smt.check_sat()
 
 if tempind:
-    retstatus = False
+    retstatus = "FAILED"
     skip_counter = step_size
     for step in range(num_steps, -1, -1):
         if smt.forall:
@@ -1303,7 +1303,7 @@ if tempind:
 
         else:
             print_msg("Temporal induction successful.")
-            retstatus = True
+            retstatus = "PASSED"
             break
 
 elif covermode:
@@ -1321,7 +1321,7 @@ elif covermode:
     smt.write("(define-fun covers_0 ((state |%s_s|)) (_ BitVec %d) %s)" % (topmod, len(cover_desc), cover_expr))
 
     step = 0
-    retstatus = False
+    retstatus = "FAILED"
     found_failed_assert = False
 
     assert step_size == 1
@@ -1350,7 +1350,13 @@ elif covermode:
                 smt_assert("(distinct (covers_%d s%d) #b%s)" % (coveridx, step, "0" * len(cover_desc)))
 
                 if smt_check_sat() == "unsat":
+<<<<<<< HEAD
                     smt_pop()
+=======
+                    print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
+                    found_failed_assert = True
+                    retstatus = "FAILED"
+>>>>>>> 9fef1df3c1431cff2e097a10a502f77f04986a60
                     break
 
                 if append_steps > 0:
@@ -1401,7 +1407,7 @@ elif covermode:
             break
 
         if "1" not in cover_mask:
-            retstatus = True
+            retstatus = "PASSED"
             break
 
         step += 1
@@ -1413,7 +1419,7 @@ elif covermode:
 
 else:  # not tempind, covermode
     step = 0
-    retstatus = True
+    retstatus = "PASSED"
     while step < num_steps:
         smt_state(step)
         smt_assert_consequent("(|%s_u| s%d)" % (topmod, step))
@@ -1460,8 +1466,8 @@ else:  # not tempind, covermode
                     print_msg("Checking assumptions in steps %d to %d.." % (step, last_check_step))
 
                 if smt_check_sat() == "unsat":
-                    print("%s Warmup failed!" % smt.timestamp())
-                    retstatus = False
+                    print("%s Assumptions are unsatisfiable!" % smt.timestamp())
+                    retstatus = "PREUNSAT"
                     break
 
             if not final_only:
@@ -1472,6 +1478,7 @@ else:  # not tempind, covermode
                 if not formulaOnly:
                     smt_push()
 
+<<<<<<< HEAD
                     smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
                             [get_constr_expr(constr_asserts, i) for i in range(step, last_check_step+1)]))
 
@@ -1497,6 +1504,33 @@ else:  # not tempind, covermode
                         write_trace(0, last_check_step+1+append_steps, '%')
                         retstatus = False
                         break
+=======
+                smt_assert("(not (and %s))" % " ".join(["(|%s_a| s%d)" % (topmod, i) for i in range(step, last_check_step+1)] +
+                        [get_constr_expr(constr_asserts, i) for i in range(step, last_check_step+1)]))
+
+                if smt_check_sat() == "sat":
+                    print("%s BMC failed!" % smt.timestamp())
+                    if append_steps > 0:
+                        for i in range(last_check_step+1, last_check_step+1+append_steps):
+                            print_msg("Appending additional step %d." % i)
+                            smt_state(i)
+                            smt_assert_antecedent("(not (|%s_is| s%d))" % (topmod, i))
+                            smt_assert_consequent("(|%s_u| s%d)" % (topmod, i))
+                            smt_assert_antecedent("(|%s_h| s%d)" % (topmod, i))
+                            smt_assert_antecedent("(|%s_t| s%d s%d)" % (topmod, i-1, i))
+                            smt_assert_consequent(get_constr_expr(constr_assumes, i))
+                        print_msg("Re-solving with appended steps..")
+                        if smt_check_sat() == "unsat":
+                            print("%s Cannot appended steps without violating assumptions!" % smt.timestamp())
+                            retstatus = "FAILED"
+                            break
+                    print_anyconsts(step)
+                    for i in range(step, last_check_step+1):
+                        print_failed_asserts(i)
+                    write_trace(0, last_check_step+1+append_steps, '%')
+                    retstatus = "FAILED"
+                    break
+>>>>>>> 9fef1df3c1431cff2e097a10a502f77f04986a60
 
                     smt_pop()
 
@@ -1517,6 +1551,7 @@ else:  # not tempind, covermode
                         smt_assert_consequent(get_constr_expr(constr_assumes, i, final=True))
                         smt_assert("(not %s)" % get_constr_expr(constr_asserts, i, final=True))
 
+<<<<<<< HEAD
                         if smt_check_sat() == "sat":
                             print("%s BMC failed!" % smt.timestamp())
                             print_anyconsts(i)
@@ -1524,6 +1559,15 @@ else:  # not tempind, covermode
                             write_trace(0, i+1, '%')
                             retstatus = False
                             break
+=======
+                    if smt_check_sat() == "sat":
+                        print("%s BMC failed!" % smt.timestamp())
+                        print_anyconsts(i)
+                        print_failed_asserts(i, final=True)
+                        write_trace(0, i+1, '%')
+                        retstatus = "FAILED"
+                        break
+>>>>>>> 9fef1df3c1431cff2e097a10a502f77f04986a60
 
                         smt_pop()
                 if not retstatus:
@@ -1537,7 +1581,7 @@ else:  # not tempind, covermode
             print_msg("Solving for step %d.." % (last_check_step))
             if smt_check_sat() != "sat":
                 print("%s No solution found!" % smt.timestamp())
-                retstatus = False
+                retstatus = "FAILED"
                 break
 
             elif dumpall:
@@ -1554,5 +1598,5 @@ else:  # not tempind, covermode
 smt.write("(exit)")
 smt.wait()
 
-print_msg("Status: %s" % ("PASSED" if retstatus else "FAILED (!)"))
-sys.exit(0 if retstatus else 1)
+print_msg("Status: %s" % retstatus)
+sys.exit(0 if retstatus == "PASSED" else 1)

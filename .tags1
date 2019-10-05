@@ -1,0 +1,69 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	0	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+SimShared	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^struct SimShared {$/;"	struct	line:32	file:
+debug	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool debug = false;$/;"	member	line:33	struct:SimShared	file:
+hide_internal	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool hide_internal = true;$/;"	member	line:34	struct:SimShared	file:
+writeback	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool writeback = false;$/;"	member	line:35	struct:SimShared	file:
+zinit	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool zinit = false;$/;"	member	line:36	struct:SimShared	file:
+rstlen	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  int rstlen = 1;$/;"	member	line:37	struct:SimShared	file:
+zinit	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^void zinit(SymConst &v) {$/;"	function	line:40	signature:(SymConst &v)
+SimInstance	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^struct SimInstance {$/;"	struct	line:47	file:
+shared	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimShared *shared;$/;"	member	line:48	struct:SimInstance	file:
+module	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  Module *module;$/;"	member	line:50	struct:SimInstance	file:
+instance	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  Cell *instance;$/;"	member	line:51	struct:SimInstance	file:
+cycle_	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  int cycle_;$/;"	member	line:52	struct:SimInstance	file:
+parent	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimInstance *parent;$/;"	member	line:53	struct:SimInstance	file:
+children	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<Cell *, SimInstance *> children;$/;"	member	line:54	struct:SimInstance	file:
+sigmap	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SigMap sigmap;$/;"	member	line:56	struct:SimInstance	file:
+state_nets	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<SigBit, RTLIL::StateSym> state_nets;$/;"	member	line:57	struct:SimInstance	file:
+upd_cells	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<SigBit, pool<Cell *>> upd_cells;$/;"	member	line:58	struct:SimInstance	file:
+upd_outports	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<SigBit, pool<Wire *>> upd_outports;$/;"	member	line:59	struct:SimInstance	file:
+dirty_bits	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<SigBit> dirty_bits;$/;"	member	line:61	struct:SimInstance	file:
+dirty_cells	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<Cell *> dirty_cells;$/;"	member	line:62	struct:SimInstance	file:
+dirty_children	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<SimInstance *, hash_ptr_ops> dirty_children;$/;"	member	line:63	struct:SimInstance	file:
+ff_state_t	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  struct ff_state_t {$/;"	struct	line:65	struct:SimInstance	file:
+past_clock	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    StateSym past_clock;$/;"	member	line:66	struct:SimInstance::ff_state_t	file:
+past_d	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst past_d;$/;"	member	line:67	struct:SimInstance::ff_state_t	file:
+mem_state_t	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  struct mem_state_t {$/;"	struct	line:70	struct:SimInstance	file:
+past_wr_clk	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst past_wr_clk;$/;"	member	line:71	struct:SimInstance::mem_state_t	file:
+past_wr_en	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst past_wr_en;$/;"	member	line:72	struct:SimInstance::mem_state_t	file:
+past_wr_addr	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst past_wr_addr;$/;"	member	line:73	struct:SimInstance::mem_state_t	file:
+past_wr_data	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst past_wr_data;$/;"	member	line:74	struct:SimInstance::mem_state_t	file:
+data	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^    SymConst data;$/;"	member	line:75	struct:SimInstance::mem_state_t	file:
+ff_database	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<Cell *, ff_state_t> ff_database;$/;"	member	line:78	struct:SimInstance	file:
+mem_database	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<Cell *, mem_state_t> mem_database;$/;"	member	line:79	struct:SimInstance	file:
+formal_database	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<Cell *> formal_database;$/;"	member	line:80	struct:SimInstance	file:
+vcd_database	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  dict<Wire *, pair<int, SymConst>> vcd_database;$/;"	member	line:82	struct:SimInstance	file:
+SimInstance	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimInstance(SimShared *shared, Module *module, Cell *instance = nullptr,$/;"	function	line:84	struct:SimInstance	signature:(SimShared *shared, Module *module, Cell *instance = nullptr, SimInstance *parent = nullptr)
+~SimInstance	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  ~SimInstance() {$/;"	function	line:184	struct:SimInstance	signature:()
+name	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  IdString name() const {$/;"	function	line:189	struct:SimInstance	signature:() const
+hiername	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  std::string hiername() const {$/;"	function	line:195	struct:SimInstance	signature:() const
+get_state	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SymConst get_state(SigSpec sig) {$/;"	function	line:202	struct:SimInstance	signature:(SigSpec sig)
+set_state	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool set_state(SigSpec sig, SymConst value) {$/;"	function	line:220	struct:SimInstance	signature:(SigSpec sig, SymConst value)
+update_cell	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void update_cell(Cell *cell) {$/;"	function	line:250	struct:SimInstance	signature:(Cell *cell)
+update_ph1	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void update_ph1() {$/;"	function	line:364	struct:SimInstance	signature:()
+update_ph2	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  bool update_ph2() {$/;"	function	line:409	struct:SimInstance	signature:()
+update_ph3	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void update_ph3() {$/;"	function	line:492	struct:SimInstance	signature:()
+writeback	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void writeback(pool<Module *> &wbmods) {$/;"	function	line:538	struct:SimInstance	signature:(pool<Module *> &wbmods)
+write_vcd_header	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void write_vcd_header(std::ofstream &f, int &id) {$/;"	function	line:584	struct:SimInstance	signature:(std::ofstream &f, int &id)
+write_vcd_step	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  int write_vcd_step(std::ofstream &f) {$/;"	function	line:602	struct:SimInstance	signature:(std::ofstream &f)
+SimWorker	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^struct SimWorker : SimShared {$/;"	struct	line:628	file:
+top	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimInstance *top = nullptr;$/;"	member	line:629	struct:SimWorker	file:
+vcdfile	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  std::ofstream vcdfile;$/;"	member	line:630	struct:SimWorker	file:
+clock	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<IdString> clock, clockn, reset, resetn;$/;"	member	line:631	struct:SimWorker	file:
+clockn	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<IdString> clock, clockn, reset, resetn;$/;"	member	line:631	struct:SimWorker	file:
+reset	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<IdString> clock, clockn, reset, resetn;$/;"	member	line:631	struct:SimWorker	file:
+resetn	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  pool<IdString> clock, clockn, reset, resetn;$/;"	member	line:631	struct:SimWorker	file:
+~SimWorker	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  ~SimWorker() { delete top; }$/;"	function	line:633	struct:SimWorker	signature:()
+write_vcd_header	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void write_vcd_header() {$/;"	function	line:635	struct:SimWorker	signature:()
+write_vcd_step	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void write_vcd_step(int t) {$/;"	function	line:645	struct:SimWorker	signature:(int t)
+update	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void update() {$/;"	function	line:654	struct:SimWorker	signature:()
+set_inports	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void set_inports(pool<IdString> ports, StateSym value) {$/;"	function	line:672	struct:SimWorker	signature:(pool<IdString> ports, StateSym value)
+run	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  void run(Module *topmod, int numcycles) {$/;"	function	line:683	struct:SimWorker	signature:(Module *topmod, int numcycles)
+SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^struct SimPass : public Pass {$/;"	struct	line:739	file:
+SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^  SimPass() : Pass("sim_state", "simulate the circuit") {}$/;"	function	line:740	struct:SimPass	signature:()
+SimPass	/Users/ziqiaozhou/zzdiss/codes/yosys/passes/sat/sim_state.cc	/^} SimPass;$/;"	variable	line:855	typeref:struct:SimPass

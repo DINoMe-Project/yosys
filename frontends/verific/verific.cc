@@ -19,6 +19,7 @@
 
 #include "kernel/yosys.h"
 #include "kernel/sigtools.h"
+#include "kernel/celltypes.h"
 #include "kernel/log.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -46,7 +47,15 @@ USING_YOSYS_NAMESPACE
 #include "VeriModule.h"
 #include "VeriWrite.h"
 #include "VhdlUnits.h"
-#include "Message.h"
+#include "VeriLibrary.h"
+
+#ifndef SYMBIOTIC_VERIFIC_API_VERSION
+#  error "Only Symbiotic EDA flavored Verific is supported. Please contact office@symbioticeda.com for commercial support for Yosys+Verific."
+#endif
+
+#if SYMBIOTIC_VERIFIC_API_VERSION < 1
+#  error "Please update your version of Symbiotic EDA flavored Verific."
+#endif
 
 #ifdef __clang__
 #pragma clang diagnostic pop
@@ -103,9 +112,10 @@ string get_full_netlist_name(Netlist *nl)
 
 // ==================================================================
 
-VerificImporter::VerificImporter(bool mode_gates, bool mode_keep, bool mode_nosva, bool mode_names, bool mode_verific, bool mode_autocover) :
+VerificImporter::VerificImporter(bool mode_gates, bool mode_keep, bool mode_nosva, bool mode_names, bool mode_verific, bool mode_autocover, bool mode_fullinit) :
 		mode_gates(mode_gates), mode_keep(mode_keep), mode_nosva(mode_nosva),
-		mode_names(mode_names), mode_verific(mode_verific), mode_autocover(mode_autocover)
+		mode_names(mode_names), mode_verific(mode_verific), mode_autocover(mode_autocover),
+		mode_fullinit(mode_fullinit)
 {
 }
 
@@ -776,13 +786,14 @@ void VerificImporter::merge_past_ffs(pool<RTLIL::Cell*> &candidates)
 
 void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::set<Netlist*> &nl_todo)
 {
-	std::string module_name = nl->IsOperator() ? std::string("$verific$") + nl->Owner()->Name() : RTLIL::escape_id(nl->Owner()->Name());
+	std::string netlist_name = nl->GetAtt(" \\top") ? nl->CellBaseName() : nl->Owner()->Name();
+	std::string module_name = nl->IsOperator() ? "$verific$" + netlist_name : RTLIL::escape_id(netlist_name);
 
 	netlist = nl;
 
 	if (design->has(module_name)) {
 		if (!nl->IsOperator() && !is_blackbox(nl))
-			log_cmd_error("Re-definition of module `%s'.\n", nl->Owner()->Name());
+			log_cmd_error("Re-definition of module `%s'.\n", netlist_name.c_str());
 		return;
 	}
 
@@ -1445,6 +1456,50 @@ void VerificImporter::import_netlist(RTLIL::Design *design, Netlist *nl, std::se
 
 		merge_past_ffs(past_ffs);
 	}
+
+	if (!mode_fullinit)
+	{
+		pool<SigBit> non_ff_bits;
+		CellTypes ff_types;
+
+		ff_types.setup_internals_ff();
+		ff_types.setup_stdcells_mem();
+
+		for (auto cell : module->cells())
+		{
+			if (ff_types.cell_known(cell->type))
+				continue;
+
+			for (auto conn : cell->connections())
+			{
+				if (!cell->output(conn.first))
+					continue;
+
+				for (auto bit : conn.second)
+					if (bit.wire != nullptr)
+						non_ff_bits.insert(bit);
+			}
+		}
+
+		for (auto wire : module->wires())
+		{
+			if (!wire->attributes.count("\\init"))
+				continue;
+
+			Const &initval = wire->attributes.at("\\init");
+			for (int i = 0; i < GetSize(initval); i++)
+			{
+				if (initval[i] != State::S0 && initval[i] != State::S1)
+					continue;
+
+				if (non_ff_bits.count(SigBit(wire, i)))
+					initval[i] = State::Sx;
+			}
+
+			if (initval.is_fully_undef())
+				wire->attributes.erase("\\init");
+		}
+	}
 }
 
 // ==================================================================
@@ -1619,36 +1674,74 @@ struct VerificExtNets
 	int portname_cnt = 0;
 
 	// a map from Net to the same Net one level up in the design hierarchy
-	std::map<Net*, Net*> net_level_up;
+	std::map<Net*, Net*> net_level_up_drive_up;
+	std::map<Net*, Net*> net_level_up_drive_down;
 
-	Net *get_net_level_up(Net *net)
+	Net *route_up(Net *net, bool drive_up, Net *final_net = nullptr)
 	{
+		auto &net_level_up = drive_up ? net_level_up_drive_up : net_level_up_drive_down;
+
 		if (net_level_up.count(net) == 0)
 		{
 			Netlist *nl = net->Owner();
 
 			// Simply return if Netlist is not unique
-			if (nl->NumOfRefs() != 1)
-				return net;
+			log_assert(nl->NumOfRefs() == 1);
 
 			Instance *up_inst = (Instance*)nl->GetReferences()->GetLast();
 			Netlist *up_nl = up_inst->Owner();
 
 			// create new Port
 			string name = stringf("___extnets_%d", portname_cnt++);
-			Port *new_port = new Port(name.c_str(), DIR_OUT);
+			Port *new_port = new Port(name.c_str(), drive_up ? DIR_OUT : DIR_IN);
 			nl->Add(new_port);
 			net->Connect(new_port);
 
 			// create new Net in up Netlist
-			Net *new_net = new Net(name.c_str());
-			up_nl->Add(new_net);
+			Net *new_net = final_net;
+			if (new_net == nullptr || new_net->Owner() != up_nl) {
+				new_net = new Net(name.c_str());
+				up_nl->Add(new_net);
+			}
 			up_inst->Connect(new_port, new_net);
 
 			net_level_up[net] = new_net;
 		}
 
 		return net_level_up.at(net);
+	}
+
+	Net *route_up(Net *net, bool drive_up, Netlist *dest, Net *final_net = nullptr)
+	{
+		while (net->Owner() != dest)
+			net = route_up(net, drive_up, final_net);
+		if (final_net != nullptr)
+			log_assert(net == final_net);
+		return net;
+	}
+
+	Netlist *find_common_ancestor(Netlist *A, Netlist *B)
+	{
+		std::set<Netlist*> ancestors_of_A;
+
+		Netlist *cursor = A;
+		while (1) {
+			ancestors_of_A.insert(cursor);
+			if (cursor->NumOfRefs() != 1)
+				break;
+			cursor = ((Instance*)cursor->GetReferences()->GetLast())->Owner();
+		}
+
+		cursor = B;
+		while (1) {
+			if (ancestors_of_A.count(cursor))
+				return cursor;
+			if (cursor->NumOfRefs() != 1)
+				break;
+			cursor = ((Instance*)cursor->GetReferences()->GetLast())->Owner();
+		}
+
+		log_error("No common ancestor found between %s and %s.\n", get_full_netlist_name(A).c_str(), get_full_netlist_name(B).c_str());
 	}
 
 	void run(Netlist *nl)
@@ -1674,19 +1767,37 @@ struct VerificExtNets
 			if (verific_verbose)
 				log("Fixing external net reference on port %s.%s.%s:\n", get_full_netlist_name(nl).c_str(), inst->Name(), port->Name());
 
-			while (net->IsExternalTo(nl))
-			{
-				Net *newnet = get_net_level_up(net);
-				if (newnet == net) break;
+			Netlist *ext_nl = net->Owner();
 
+			if (verific_verbose)
+				log(" external net owner: %s\n", get_full_netlist_name(ext_nl).c_str());
+
+			Netlist *ca_nl = find_common_ancestor(nl, ext_nl);
+
+			if (verific_verbose)
+				log(" common ancestor: %s\n", get_full_netlist_name(ca_nl).c_str());
+
+			Net *ca_net = route_up(net, !port->IsOutput(), ca_nl);
+			Net *new_net = ca_net;
+
+			if (ca_nl != nl)
+			{
 				if (verific_verbose)
-					log("  external net: %s.%s\n", get_full_netlist_name(net->Owner()).c_str(), net->Name());
-				net = newnet;
+					log(" net in common ancestor: %s\n", ca_net->Name());
+
+				string name = stringf("___extnets_%d", portname_cnt++);
+				new_net = new Net(name.c_str());
+				nl->Add(new_net);
+
+				Net *n YS_ATTRIBUTE(unused) = route_up(new_net, port->IsOutput(), ca_nl, ca_net);
+				log_assert(n == ca_net);
 			}
 
 			if (verific_verbose)
-				log("  final net: %s.%s%s\n", get_full_netlist_name(net->Owner()).c_str(), net->Name(), net->IsExternalTo(nl) ? " (external)" : "");
-			todo_connect.push_back(tuple<Instance*, Port*, Net*>(inst, port, net));
+				log(" new local net: %s\n", new_net->Name());
+
+			log_assert(!new_net->IsExternalTo(nl));
+			todo_connect.push_back(tuple<Instance*, Port*, Net*>(inst, port, new_net));
 		}
 
 		for (auto it : todo_connect) {
@@ -1696,31 +1807,63 @@ struct VerificExtNets
 	}
 };
 
-void verific_import(Design *design, std::string top)
+void verific_import(Design *design, const std::map<std::string,std::string> &parameters, std::string top)
 {
 	verific_sva_fsm_limit = 16;
 
 	std::set<Netlist*> nl_todo, nl_done;
 
-	{
-		VhdlLibrary *vhdl_lib = vhdl_file::GetLibrary("work", 1);
-		VeriLibrary *veri_lib = veri_file::GetLibrary("work", 1);
+	VhdlLibrary *vhdl_lib = vhdl_file::GetLibrary("work", 1);
+	VeriLibrary *veri_lib = veri_file::GetLibrary("work", 1);
+	Array *netlists = NULL;
+	Array veri_libs, vhdl_libs;
+	if (vhdl_lib) vhdl_libs.InsertLast(vhdl_lib);
+	if (veri_lib) veri_libs.InsertLast(veri_lib);
 
-		Array veri_libs, vhdl_libs;
-		if (vhdl_lib) vhdl_libs.InsertLast(vhdl_lib);
-		if (veri_lib) veri_libs.InsertLast(veri_lib);
+	Map verific_params(STRING_HASH);
+	for (const auto &i : parameters)
+		verific_params.Insert(i.first.c_str(), i.second.c_str());
 
-		Array *netlists = hier_tree::ElaborateAll(&veri_libs, &vhdl_libs);
-		Netlist *nl;
-		int i;
+	if (top.empty()) {
+		netlists = hier_tree::ElaborateAll(&veri_libs, &vhdl_libs, &verific_params);
+	}
+	else {
+		Array veri_modules, vhdl_units;
 
-		FOREACH_ARRAY_ITEM(netlists, i, nl) {
-			if (top.empty() || nl->Owner()->Name() == top)
-				nl_todo.insert(nl);
+		if (veri_lib) {
+			VeriModule *veri_module = veri_lib->GetModule(top.c_str(), 1);
+			if (veri_module) {
+				veri_modules.InsertLast(veri_module);
+			}
+
+			// Also elaborate all root modules since they may contain bind statements
+			MapIter mi;
+			FOREACH_VERILOG_MODULE_IN_LIBRARY(veri_lib, mi, veri_module) {
+				if (!veri_module->IsRootModule()) continue;
+				veri_modules.InsertLast(veri_module);
+			}
 		}
 
-		delete netlists;
+		if (vhdl_lib) {
+			VhdlDesignUnit *vhdl_unit = vhdl_lib->GetPrimUnit(top.c_str());
+			if (vhdl_unit)
+				vhdl_units.InsertLast(vhdl_unit);
+		}
+
+		netlists = hier_tree::Elaborate(&veri_modules, &vhdl_units, &verific_params);
 	}
+
+	Netlist *nl;
+	int i;
+
+	FOREACH_ARRAY_ITEM(netlists, i, nl) {
+		if (top.empty() && nl->CellBaseName() != top)
+			continue;
+		nl->AddAtt(new Att(" \\top", NULL));
+		nl_todo.insert(nl);
+	}
+
+	delete netlists;
 
 	if (!verific_error_msg.empty())
 		log_error("%s\n", verific_error_msg.c_str());
@@ -1732,7 +1875,7 @@ void verific_import(Design *design, std::string top)
 	while (!nl_todo.empty()) {
 		Netlist *nl = *nl_todo.begin();
 		if (nl_done.count(nl) == 0) {
-			VerificImporter importer(false, false, false, false, false, false);
+			VerificImporter importer(false, false, false, false, false, false, false);
 			importer.import_netlist(design, nl, nl_todo);
 		}
 		nl_todo.erase(nl);
@@ -1855,6 +1998,16 @@ struct VerificPass : public Pass {
 		log("  -autocover\n");
 		log("    Generate automatic cover statements for all asserts\n");
 		log("\n");
+		log("  -fullinit\n");
+		log("    Keep all register initializations, even those for non-FF registers.\n");
+		log("\n");
+		log("  -chparam name value \n");
+		log("    Elaborate the specified top modules (all modules when -all given) using\n");
+		log("    this parameter value. Modules on which this parameter does not exist will\n");
+		log("    cause Verific to produce a VERI-1928 or VHDL-1676 message. This option\n");
+		log("    can be specified multiple times to override multiple parameters.\n");
+		log("    String values must be passed in double quotes (\").\n");
+		log("\n");
 		log("  -v, -vv\n");
 		log("    Verbose log messages. (-vv is even more verbose than -v.)\n");
 		log("\n");
@@ -1919,6 +2072,13 @@ struct VerificPass : public Pass {
 
 			// WARNING: instantiating unknown module 'XYZ' (VERI-1063)
 			Message::SetMessageType("VERI-1063", VERIFIC_ERROR);
+
+			// https://github.com/YosysHQ/yosys/issues/1055
+			RuntimeFlags::SetVar("veri_elaborate_top_level_modules_having_interface_ports", 1) ;
+
+#ifndef DB_PRESERVE_INITIAL_VALUE
+#  warning Verific was built without DB_PRESERVE_INITIAL_VALUE.
+#endif
 
 			set_verific_global_flags = false;
 		}
@@ -2029,7 +2189,7 @@ struct VerificPass : public Pass {
 			veri_file::DefineMacro("VERIFIC");
 			veri_file::DefineMacro(args[argidx] == "-formal" ? "FORMAL" : "SYNTHESIS");
 
-			for (argidx++; argidx < GetSize(args) && GetSize(args[argidx]) >= 2 && args[argidx].substr(0, 2) == "-D"; argidx++) {
+			for (argidx++; argidx < GetSize(args) && GetSize(args[argidx]) >= 2 && args[argidx].compare(0, 2, "-D") == 0; argidx++) {
 				std::string name = args[argidx].substr(2);
 				if (args[argidx] == "-D") {
 					if (++argidx >= GetSize(args))
@@ -2102,9 +2262,10 @@ struct VerificPass : public Pass {
 			std::set<Netlist*> nl_todo, nl_done;
 			bool mode_all = false, mode_gates = false, mode_keep = false;
 			bool mode_nosva = false, mode_names = false, mode_verific = false;
-			bool mode_autocover = false;
+			bool mode_autocover = false, mode_fullinit = false;
 			bool flatten = false, extnets = false;
 			string dumpfile;
+			Map parameters(STRING_HASH);
 
 			for (argidx++; argidx < GetSize(args); argidx++) {
 				if (args[argidx] == "-all") {
@@ -2143,6 +2304,19 @@ struct VerificPass : public Pass {
 					mode_autocover = true;
 					continue;
 				}
+				if (args[argidx] == "-fullinit") {
+					mode_fullinit = true;
+					continue;
+				}
+				if (args[argidx] == "-chparam"  && argidx+2 < GetSize(args)) {
+					const std::string &key = args[++argidx];
+					const std::string &value = args[++argidx];
+					unsigned new_insertion = parameters.Insert(key.c_str(), value.c_str(),
+									           1 /* force_overwrite */);
+					if (!new_insertion)
+						log_warning_noprefix("-chparam %s already specified: overwriting.\n", key.c_str());
+					continue;
+				}
 				if (args[argidx] == "-V") {
 					mode_verific = true;
 					continue;
@@ -2162,7 +2336,7 @@ struct VerificPass : public Pass {
 				break;
 			}
 
-			if (argidx > GetSize(args) && args[argidx].substr(0, 1) == "-")
+			if (argidx > GetSize(args) && args[argidx].compare(0, 1, "-") == 0)
 				cmd_error(args, argidx, "unknown option");
 
 			if (mode_all)
@@ -2176,7 +2350,7 @@ struct VerificPass : public Pass {
 				if (vhdl_lib) vhdl_libs.InsertLast(vhdl_lib);
 				if (veri_lib) veri_libs.InsertLast(veri_lib);
 
-				Array *netlists = hier_tree::ElaborateAll(&veri_libs, &vhdl_libs);
+				Array *netlists = hier_tree::ElaborateAll(&veri_libs, &vhdl_libs, &parameters);
 				Netlist *nl;
 				int i;
 
@@ -2193,12 +2367,22 @@ struct VerificPass : public Pass {
 				for (; argidx < GetSize(args); argidx++)
 				{
 					const char *name = args[argidx].c_str();
+					VeriLibrary* veri_lib = veri_file::GetLibrary(work.c_str(), 1);
 
-					VeriModule *veri_module = veri_file::GetModule(name);
-					if (veri_module) {
-						log("Adding Verilog module '%s' to elaboration queue.\n", name);
-						veri_modules.InsertLast(veri_module);
-						continue;
+					if (veri_lib) {
+						VeriModule *veri_module = veri_lib->GetModule(name, 1);
+						if (veri_module) {
+							log("Adding Verilog module '%s' to elaboration queue.\n", name);
+							veri_modules.InsertLast(veri_module);
+							continue;
+						}
+
+						// Also elaborate all root modules since they may contain bind statements
+						MapIter mi;
+						FOREACH_VERILOG_MODULE_IN_LIBRARY(veri_lib, mi, veri_module) {
+							if (!veri_module->IsRootModule()) continue;
+							veri_modules.InsertLast(veri_module);
+						}
 					}
 
 					VhdlLibrary *vhdl_lib = vhdl_file::GetLibrary(work.c_str(), 1);
@@ -2213,12 +2397,14 @@ struct VerificPass : public Pass {
 				}
 
 				log("Running hier_tree::Elaborate().\n");
-				Array *netlists = hier_tree::Elaborate(&veri_modules, &vhdl_units);
+				Array *netlists = hier_tree::Elaborate(&veri_modules, &vhdl_units, &parameters);
 				Netlist *nl;
 				int i;
 
-				FOREACH_ARRAY_ITEM(netlists, i, nl)
+				FOREACH_ARRAY_ITEM(netlists, i, nl) {
+					nl->AddAtt(new Att(" \\top", NULL));
 					nl_todo.insert(nl);
+				}
 				delete netlists;
 			}
 
@@ -2245,7 +2431,7 @@ struct VerificPass : public Pass {
 				Netlist *nl = *nl_todo.begin();
 				if (nl_done.count(nl) == 0) {
 					VerificImporter importer(mode_gates, mode_keep, mode_nosva,
-							mode_names, mode_verific, mode_autocover);
+							mode_names, mode_verific, mode_autocover, mode_fullinit);
 					importer.import_netlist(design, nl, nl_todo);
 				}
 				nl_todo.erase(nl);
@@ -2309,27 +2495,49 @@ struct ReadPass : public Pass {
 		log("\n");
 		log("Add directory to global Verilog/SystemVerilog include directories.\n");
 		log("\n");
+		log("\n");
+		log("    read -verific\n");
+		log("    read -noverific\n");
+		log("\n");
+		log("Subsequent calls to 'read' will either use or not use Verific. Calling 'read'\n");
+		log("with -verific will result in an error on Yosys binaries that are built without\n");
+		log("Verific support. The default is to use Verific if it is available.\n");
+		log("\n");
 	}
 	void execute(std::vector<std::string> args, RTLIL::Design *design) YS_OVERRIDE
 	{
-		if (args.size() < 2)
+#ifdef YOSYS_ENABLE_VERIFIC
+		static bool verific_available = !check_noverific_env();
+#else
+		static bool verific_available = false;
+#endif
+		static bool use_verific = verific_available;
+
+		if (args.size() < 2 || args[1][0] != '-')
 			log_cmd_error("Missing mode parameter.\n");
+
+		if (args[1] == "-verific" || args[1] == "-noverific") {
+			if (args.size() != 2)
+				log_cmd_error("Additional arguments to -verific/-noverific.\n");
+			if (args[1] == "-verific") {
+				if (!verific_available)
+					log_cmd_error("This version of Yosys is built without Verific support.\n");
+				use_verific = true;
+			} else {
+				use_verific = false;
+			}
+			return;
+		}
 
 		if (args.size() < 3)
 			log_cmd_error("Missing file name parameter.\n");
-
-#ifdef YOSYS_ENABLE_VERIFIC
-		bool use_verific = !check_noverific_env();
-#else
-		bool use_verific = false;
-#endif
 
 		if (args[1] == "-vlog95" || args[1] == "-vlog2k") {
 			if (use_verific) {
 				args[0] = "verific";
 			} else {
 				args[0] = "read_verilog";
-				args.erase(args.begin()+1, args.begin()+2);
+				args[1] = "-defer";
 			}
 			Pass::call(design, args);
 			return;
@@ -2343,6 +2551,7 @@ struct ReadPass : public Pass {
 				if (args[1] == "-formal")
 					args.insert(args.begin()+1, std::string());
 				args[1] = "-sv";
+				args.insert(args.begin()+1, "-defer");
 			}
 			Pass::call(design, args);
 			return;

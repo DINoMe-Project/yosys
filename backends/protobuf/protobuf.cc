@@ -48,7 +48,7 @@ struct ProtobufDesignSerializer
 
 	ProtobufDesignSerializer(bool use_selection, bool aig_mode) :
 			aig_mode_(aig_mode), use_selection_(use_selection) { }
-	
+
 	string get_name(IdString name)
 	{
 		return RTLIL::unescape_id(name);
@@ -60,7 +60,7 @@ struct ProtobufDesignSerializer
 	{
 		for (auto &param : parameters) {
 			std::string key = get_name(param.first);
-			
+
 
 			yosys::pb::Parameter pb_param;
 
@@ -207,7 +207,7 @@ struct ProtobufDesignSerializer
 			(*models)[aig.name] = pb_model;
 		}
 	}
-	
+
 	void serialize_design(yosys::pb::Design *pb, Design *design)
 	{
 		GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -266,7 +266,7 @@ struct ProtobufBackend : public Backend {
 			}
 			break;
 		}
-		extra_args(f, filename, args, argidx);
+		extra_args(f, filename, args, argidx, !text_mode);
 
 		log_header(design, "Executing Protobuf backend.\n");
 
@@ -336,8 +336,9 @@ struct ProtobufPass : public Pass {
 		std::stringstream buf;
 
 		if (!filename.empty()) {
+			rewrite_filename(filename);
 			std::ofstream *ff = new std::ofstream;
-			ff->open(filename.c_str(), std::ofstream::trunc);
+			ff->open(filename.c_str(), text_mode ? std::ofstream::trunc : (std::ofstream::trunc | std::ofstream::binary));
 			if (ff->fail()) {
 				delete ff;
 				log_error("Can't open file `%s' for writing: %s\n", filename.c_str(), strerror(errno));

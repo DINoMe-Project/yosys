@@ -78,7 +78,7 @@ failed:
 	return std::pair<RTLIL::IdString, int>("\\" + name, 0);
 }
 
-void parse_blif(RTLIL::Design *design, std::istream &f, std::string dff_name, bool run_clean, bool sop_mode, bool wideports)
+void parse_blif(RTLIL::Design *design, std::istream &f, IdString dff_name, bool run_clean, bool sop_mode, bool wideports)
 {
 	RTLIL::Module *module = nullptr;
 	RTLIL::Const *lutptr = NULL;
@@ -584,7 +584,7 @@ struct BlifFrontend : public Frontend {
 	{
 		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
 		log("\n");
-		log("    read_blif [filename]\n");
+		log("    read_blif [options] [filename]\n");
 		log("\n");
 		log("Load modules from a BLIF file into the current design.\n");
 		log("\n");
