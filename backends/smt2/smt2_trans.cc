@@ -1469,7 +1469,7 @@ struct Smt2Worker {
 
     string init_expr = init_list.empty() ? "true" : "(and";
     if (!init_list.empty()) {
-      if(autoinit){
+
       if (GetSize(init_list) == 1) {
         init_expr = "\n  " + init_list.front() + "\n";
       } else {
@@ -1477,7 +1477,7 @@ struct Smt2Worker {
           init_expr += stringf("\n  %s", str.c_str());
         init_expr += "\n)";
       }
-      }
+
     }
     decls.push_back(stringf("(define-fun |%s_i| ((state |%s_s|)) Bool %s)\n",
                             get_id(module), get_id(module), init_expr.c_str()));
