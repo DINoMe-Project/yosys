@@ -41,6 +41,8 @@ struct Smt2Worker {
   pool<Cell *> recursive_cells, registers;
   std::map<std::string,std::string> symbolic_names;
   pool<SigBit> trans_bits, need_trans_bits;
+  std::map<std::string,std::string> decls_map;
+
   pool<SigBit> clock_posedge, clock_negedge;
   vector<string> ex_state_eq, ex_input_eq;
 
@@ -411,6 +413,8 @@ struct Smt2Worker {
         idcounter, get_id(module), processed_expr.c_str(), log_signal(bit)));
     register_bool(bit, idcounter++);
     recursive_cells.erase(cell);
+    decls_map[stringf("(|%s#%d| state)",get_id(module), idcounter)]= processed_expr.c_str();
+
   }
 
   void export_bvop(RTLIL::Cell *cell, std::string expr, char type = 0) {
@@ -470,6 +474,8 @@ struct Smt2Worker {
           get_id(module), idcounter, get_id(module), GetSize(sig_y),
           processed_expr.c_str(), log_signal(sig_y)));
       register_bv(sig_y, idcounter++);
+      decls_map[stringf("(|%s#%d| state)",get_id(module), idcounter)]= processed_expr.c_str();
+
     }
 
     recursive_cells.erase(cell);
@@ -498,6 +504,8 @@ struct Smt2Worker {
         idcounter, get_id(module), processed_expr.c_str(), log_signal(sig_y)));
     register_boolvec(sig_y, idcounter++);
     recursive_cells.erase(cell);
+    decls_map[stringf("(|%s#%d| state)",get_id(module), idcounter)]= processed_expr.c_str();
+
   }
 
   void export_cell(RTLIL::Cell *cell) {
@@ -1016,6 +1024,8 @@ struct Smt2Worker {
     vector<string> init_list;
     for (auto wire : module->wires())
       if (wire->attributes.count("\\init")) {
+        log("has init for wire %s\n", log_signal(wire));
+
         RTLIL::SigSpec sig = sigmap(wire);
         Const val = wire->attributes.at("\\init");
         val.bits.resize(GetSize(sig), State::Sx);
@@ -1036,12 +1046,14 @@ struct Smt2Worker {
           else
             init_list.push_back(stringf("(= %s #b%s) ; %s", get_bv(sig).c_str(),
                                         val.as_string().c_str(), get_id(wire)));
+          inited_symbol.push_back(get_bool(sig).c_str());
         } else {
           for (int i = 0; i < GetSize(sig); i++)
             if (val[i] == State::S0 || val[i] == State::S1)
               init_list.push_back(stringf(
                   "(= %s %s) ; %s", get_bool(sig[i]).c_str(),
                   val[i] == State::S1 ? "true" : "false", get_id(wire)));
+              inited_symbol.push_back(get_bool(sig[i]).c_str());
         }
       } else {
         log("no init for wire %s\n", log_signal(wire));
@@ -1156,7 +1168,7 @@ struct Smt2Worker {
         if (cell->type.in("$_FF_", "$_DFF_P_", "$_DFF_N_")) {
           std::string expr_d = get_bool(cell->getPort("\\D"));
           std::string expr_q = get_bool(cell->getPort("\\Q"), "next_state");
-          trans.push_back(stringf("  (= %s %s) ; %s %s\n", expr_d.c_str(),
+          trans.push_back(stringf("  (= %s %s) ; hahaha %s %s\n", expr_d.c_str(),
                                   expr_q.c_str(), get_id(cell),
                                   log_signal(cell->getPort("\\Q"))));
           ex_state_eq.push_back(
@@ -1173,7 +1185,10 @@ struct Smt2Worker {
           trans.push_back(stringf("  (= %s %s) ; %s %s\n", expr_d.c_str(),
                                   expr_q.c_str(), get_id(cell),
                                   log_signal(cell->getPort("\\Q"))));
-          ex_state_eq.push_back(
+	  if (decls_map.count(expr_d.c_str()))
+		  trans.push_back(stringf("%  (= %s %s) ; %s %s\n", decls_map[expr_d.c_str()].c_str(), expr_q.c_str(), get_id(cell),
+					  log_signal(cell->getPort("\\Q"))));
+	  ex_state_eq.push_back(
               stringf("(= %s %s)", get_bv(cell->getPort("\\Q")).c_str(),
                       get_bv(cell->getPort("\\Q"), "other_state").c_str()));
         }
@@ -1546,6 +1561,9 @@ struct Smt2Worker {
     else
       f << "true)";
     f << stringf(" ; end of module %s\n", get_id(module));
+    for(auto d : decls_map){
+      f<<stringf("% hahaha %s = %s\n",d.first.c_str(),d.second.c_str());
+    }
   }
 };
 

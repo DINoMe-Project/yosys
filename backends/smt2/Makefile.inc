@@ -1,6 +1,7 @@
 
 OBJS += backends/smt2/smt2.o
 OBJS += backends/smt2/smt2_trans.o
+OBJS += backends/smt2/smt2_output.o
 
 ifneq ($(CONFIG),mxe)
 ifneq ($(CONFIG),emcc)
