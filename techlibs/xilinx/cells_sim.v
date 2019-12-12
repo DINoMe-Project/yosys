@@ -38,6 +38,17 @@ module IBUF(
   assign O = I;
 endmodule
 
+module IBUFG(
+    output O,
+    (* iopad_external_pin *)
+    input I);
+  parameter CAPACITANCE = "DONT_CARE";
+  parameter IBUF_DELAY_VALUE = "0";
+  parameter IBUF_LOW_PWR = "TRUE";
+  parameter IOSTANDARD = "DEFAULT";
+  assign O = I;
+endmodule
+
 module OBUF(
     (* iopad_external_pin *)
     output O,
@@ -46,6 +57,34 @@ module OBUF(
   parameter DRIVE = 12;
   parameter SLEW = "SLOW";
   assign O = I;
+endmodule
+
+module IOBUF (
+    (* iopad_external_pin *)
+    inout IO,
+    output O,
+    input I,
+    input T
+);
+    parameter integer DRIVE = 12;
+    parameter IBUF_LOW_PWR = "TRUE";
+    parameter IOSTANDARD = "DEFAULT";
+    parameter SLEW = "SLOW";
+    assign IO = T ? 1'bz : I;
+    assign O = IO;
+endmodule
+
+module OBUFT (
+    (* iopad_external_pin *)
+    output O,
+    input I,
+    input T
+);
+    parameter CAPACITANCE = "DONT_CARE";
+    parameter integer DRIVE = 12;
+    parameter IOSTANDARD = "DEFAULT";
+    parameter SLEW = "SLOW";
+    assign O = T ? 1'bz : I;
 endmodule
 
 module BUFG(
@@ -115,7 +154,11 @@ endmodule
 //   assign O = IO, IO = T ? 1'bz : I;
 // endmodule
 
-module INV(output O, input I);
+module INV(
+    (* clkbuf_inv = "I" *)
+    output O,
+    input I
+);
   assign O = !I;
 endmodule
 
@@ -184,12 +227,12 @@ module MUXCY(output O, input CI, DI, S);
   assign O = S ? CI : DI;
 endmodule
 
-(* abc_box_id = 1, lib_whitebox *)
+(* abc9_box_id = 1, lib_whitebox *)
 module MUXF7(output O, input I0, I1, S);
   assign O = S ? I1 : I0;
 endmodule
 
-(* abc_box_id = 2, lib_whitebox *)
+(* abc9_box_id = 2, lib_whitebox *)
 module MUXF8(output O, input I0, I1, S);
   assign O = S ? I1 : I0;
 endmodule
@@ -198,12 +241,12 @@ module XORCY(output O, input CI, LI);
   assign O = CI ^ LI;
 endmodule
 
-(* abc_box_id = 4, lib_whitebox *)
+(* abc9_box_id = 4, lib_whitebox *)
 module CARRY4(
-  (* abc_carry *)
+  (* abc9_carry *)
   output [3:0] CO,
   output [3:0] O,
-  (* abc_carry *)
+  (* abc9_carry *)
   input        CI,
   input        CYINIT,
   input  [3:0] DI, S
@@ -241,7 +284,7 @@ endmodule
 // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLL_L.sdf#L238-L250
 
 module FDRE (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   (* invertible_pin = "IS_C_INVERTED" *)
@@ -264,7 +307,7 @@ module FDRE (
 endmodule
 
 module FDSE (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   (* invertible_pin = "IS_C_INVERTED" *)
@@ -287,7 +330,7 @@ module FDSE (
 endmodule
 
 module FDCE (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   (* invertible_pin = "IS_C_INVERTED" *)
@@ -312,7 +355,7 @@ module FDCE (
 endmodule
 
 module FDPE (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   (* invertible_pin = "IS_C_INVERTED" *)
@@ -337,7 +380,7 @@ module FDPE (
 endmodule
 
 module FDRE_1 (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   input C,
@@ -349,7 +392,7 @@ module FDRE_1 (
 endmodule
 
 module FDSE_1 (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   input C,
@@ -361,7 +404,7 @@ module FDSE_1 (
 endmodule
 
 module FDCE_1 (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   input C,
@@ -373,7 +416,7 @@ module FDCE_1 (
 endmodule
 
 module FDPE_1 (
-  (* abc_arrival=303 *)
+  (* abc9_arrival=303 *)
   output reg Q,
   (* clkbuf_sink *)
   input C,
@@ -428,9 +471,476 @@ module LDPE (
     else if (GE && g) Q = D;
 endmodule
 
+// LUTRAM.
+
+// Single port.
+
+module RAM16X1S (
+  output O,
+  input A0, A1, A2, A3,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [15:0] INIT = 16'h0000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  reg [15:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM16X1S_1 (
+  output O,
+  input A0, A1, A2, A3,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [15:0] INIT = 16'h0000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  reg [15:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM32X1S (
+  output O,
+  input A0, A1, A2, A3, A4,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [31:0] INIT = 32'h00000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  reg [31:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM32X1S_1 (
+  output O,
+  input A0, A1, A2, A3, A4,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [31:0] INIT = 32'h00000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  reg [31:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM64X1S (
+  output O,
+  input A0, A1, A2, A3, A4, A5,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [5:0] a = {A5, A4, A3, A2, A1, A0};
+  reg [63:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM64X1S_1 (
+  output O,
+  input A0, A1, A2, A3, A4, A5,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [5:0] a = {A5, A4, A3, A2, A1, A0};
+  reg [63:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM128X1S (
+  output O,
+  input A0, A1, A2, A3, A4, A5, A6,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [127:0] INIT = 128'h00000000000000000000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [6:0] a = {A6, A5, A4, A3, A2, A1, A0};
+  reg [127:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM128X1S_1 (
+  output O,
+  input A0, A1, A2, A3, A4, A5, A6,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [127:0] INIT = 128'h00000000000000000000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [6:0] a = {A6, A5, A4, A3, A2, A1, A0};
+  reg [127:0] mem = INIT;
+  assign O = mem[a];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM256X1S (
+  output O,
+  input [7:0] A,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [255:0] INIT = 256'h0;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [255:0] mem = INIT;
+  assign O = mem[A];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[A] <= D;
+endmodule
+
+module RAM512X1S (
+  output O,
+  input [8:0] A,
+  input D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [511:0] INIT = 512'h0;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [511:0] mem = INIT;
+  assign O = mem[A];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[A] <= D;
+endmodule
+
+// Single port, wide.
+
+module RAM16X2S (
+  output O0, O1,
+  input A0, A1, A2, A3,
+  input D0, D1,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [15:0] INIT_00 = 16'h0000;
+  parameter [15:0] INIT_01 = 16'h0000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [15:0] mem0 = INIT_00;
+  reg [15:0] mem1 = INIT_01;
+  assign O0 = mem0[a];
+  assign O1 = mem1[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D0;
+      mem1[a] <= D1;
+    end
+endmodule
+
+module RAM32X2S (
+  output O0, O1,
+  input A0, A1, A2, A3, A4,
+  input D0, D1,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [31:0] INIT_00 = 32'h00000000;
+  parameter [31:0] INIT_01 = 32'h00000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [31:0] mem0 = INIT_00;
+  reg [31:0] mem1 = INIT_01;
+  assign O0 = mem0[a];
+  assign O1 = mem1[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D0;
+      mem1[a] <= D1;
+    end
+endmodule
+
+module RAM64X2S (
+  output O0, O1,
+  input A0, A1, A2, A3, A4, A5,
+  input D0, D1,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT_00 = 64'h0000000000000000;
+  parameter [63:0] INIT_01 = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [5:0] a = {A5, A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [63:0] mem0 = INIT_00;
+  reg [63:0] mem1 = INIT_01;
+  assign O0 = mem0[a];
+  assign O1 = mem1[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D0;
+      mem1[a] <= D1;
+    end
+endmodule
+
+module RAM16X4S (
+  output O0, O1, O2, O3,
+  input A0, A1, A2, A3,
+  input D0, D1, D2, D3,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [15:0] INIT_00 = 16'h0000;
+  parameter [15:0] INIT_01 = 16'h0000;
+  parameter [15:0] INIT_02 = 16'h0000;
+  parameter [15:0] INIT_03 = 16'h0000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [15:0] mem0 = INIT_00;
+  reg [15:0] mem1 = INIT_01;
+  reg [15:0] mem2 = INIT_02;
+  reg [15:0] mem3 = INIT_03;
+  assign O0 = mem0[a];
+  assign O1 = mem1[a];
+  assign O2 = mem2[a];
+  assign O3 = mem3[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D0;
+      mem1[a] <= D1;
+      mem2[a] <= D2;
+      mem3[a] <= D3;
+    end
+endmodule
+
+module RAM32X4S (
+  output O0, O1, O2, O3,
+  input A0, A1, A2, A3, A4,
+  input D0, D1, D2, D3,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [31:0] INIT_00 = 32'h00000000;
+  parameter [31:0] INIT_01 = 32'h00000000;
+  parameter [31:0] INIT_02 = 32'h00000000;
+  parameter [31:0] INIT_03 = 32'h00000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [31:0] mem0 = INIT_00;
+  reg [31:0] mem1 = INIT_01;
+  reg [31:0] mem2 = INIT_02;
+  reg [31:0] mem3 = INIT_03;
+  assign O0 = mem0[a];
+  assign O1 = mem1[a];
+  assign O2 = mem2[a];
+  assign O3 = mem3[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D0;
+      mem1[a] <= D1;
+      mem2[a] <= D2;
+      mem3[a] <= D3;
+    end
+endmodule
+
+module RAM16X8S (
+  output [7:0] O,
+  input A0, A1, A2, A3,
+  input [7:0] D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [15:0] INIT_00 = 16'h0000;
+  parameter [15:0] INIT_01 = 16'h0000;
+  parameter [15:0] INIT_02 = 16'h0000;
+  parameter [15:0] INIT_03 = 16'h0000;
+  parameter [15:0] INIT_04 = 16'h0000;
+  parameter [15:0] INIT_05 = 16'h0000;
+  parameter [15:0] INIT_06 = 16'h0000;
+  parameter [15:0] INIT_07 = 16'h0000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [15:0] mem0 = INIT_00;
+  reg [15:0] mem1 = INIT_01;
+  reg [15:0] mem2 = INIT_02;
+  reg [15:0] mem3 = INIT_03;
+  reg [15:0] mem4 = INIT_04;
+  reg [15:0] mem5 = INIT_05;
+  reg [15:0] mem6 = INIT_06;
+  reg [15:0] mem7 = INIT_07;
+  assign O[0] = mem0[a];
+  assign O[1] = mem1[a];
+  assign O[2] = mem2[a];
+  assign O[3] = mem3[a];
+  assign O[4] = mem4[a];
+  assign O[5] = mem5[a];
+  assign O[6] = mem6[a];
+  assign O[7] = mem7[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D[0];
+      mem1[a] <= D[1];
+      mem2[a] <= D[2];
+      mem3[a] <= D[3];
+      mem4[a] <= D[4];
+      mem5[a] <= D[5];
+      mem6[a] <= D[6];
+      mem7[a] <= D[7];
+    end
+endmodule
+
+module RAM32X8S (
+  output [7:0] O,
+  input A0, A1, A2, A3, A4,
+  input [7:0] D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [31:0] INIT_00 = 32'h00000000;
+  parameter [31:0] INIT_01 = 32'h00000000;
+  parameter [31:0] INIT_02 = 32'h00000000;
+  parameter [31:0] INIT_03 = 32'h00000000;
+  parameter [31:0] INIT_04 = 32'h00000000;
+  parameter [31:0] INIT_05 = 32'h00000000;
+  parameter [31:0] INIT_06 = 32'h00000000;
+  parameter [31:0] INIT_07 = 32'h00000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  reg [31:0] mem0 = INIT_00;
+  reg [31:0] mem1 = INIT_01;
+  reg [31:0] mem2 = INIT_02;
+  reg [31:0] mem3 = INIT_03;
+  reg [31:0] mem4 = INIT_04;
+  reg [31:0] mem5 = INIT_05;
+  reg [31:0] mem6 = INIT_06;
+  reg [31:0] mem7 = INIT_07;
+  assign O[0] = mem0[a];
+  assign O[1] = mem1[a];
+  assign O[2] = mem2[a];
+  assign O[3] = mem3[a];
+  assign O[4] = mem4[a];
+  assign O[5] = mem5[a];
+  assign O[6] = mem6[a];
+  assign O[7] = mem7[a];
+  always @(posedge clk)
+    if (WE) begin
+      mem0[a] <= D[0];
+      mem1[a] <= D[1];
+      mem2[a] <= D[2];
+      mem3[a] <= D[3];
+      mem4[a] <= D[4];
+      mem5[a] <= D[5];
+      mem6[a] <= D[6];
+      mem7[a] <= D[7];
+    end
+endmodule
+
+// Dual port.
+
+module RAM16X1D (
+  output DPO, SPO,
+  input  D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input  WCLK,
+  input  WE,
+  input  A0, A1, A2, A3,
+  input  DPRA0, DPRA1, DPRA2, DPRA3
+);
+  parameter INIT = 16'h0;
+  parameter IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  wire [3:0] dpra = {DPRA3, DPRA2, DPRA1, DPRA0};
+  reg [15:0] mem = INIT;
+  assign SPO = mem[a];
+  assign DPO = mem[dpra];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[a] <= D;
+endmodule
+
+module RAM16X1D_1 (
+  output DPO, SPO,
+  input  D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input  WCLK,
+  input  WE,
+  input  A0, A1, A2, A3,
+  input  DPRA0, DPRA1, DPRA2, DPRA3
+);
+  parameter INIT = 16'h0;
+  parameter IS_WCLK_INVERTED = 1'b0;
+  wire [3:0] a = {A3, A2, A1, A0};
+  wire [3:0] dpra = {DPRA3, DPRA2, DPRA1, DPRA0};
+  reg [15:0] mem = INIT;
+  assign SPO = mem[a];
+  assign DPO = mem[dpra];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
 module RAM32X1D (
   // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L957
-  (* abc_arrival=1153 *)
+  (* abc9_arrival=1153 *)
   output DPO, SPO,
   input  D,
   (* clkbuf_sink *)
@@ -451,9 +961,32 @@ module RAM32X1D (
   always @(posedge clk) if (WE) mem[a] <= D;
 endmodule
 
+module RAM32X1D_1 (
+  // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L957
+  (* abc9_arrival=1153 *)
+  output DPO, SPO,
+  input  D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input  WCLK,
+  input  WE,
+  input  A0, A1, A2, A3, A4,
+  input  DPRA0, DPRA1, DPRA2, DPRA3, DPRA4
+);
+  parameter INIT = 32'h0;
+  parameter IS_WCLK_INVERTED = 1'b0;
+  wire [4:0] a = {A4, A3, A2, A1, A0};
+  wire [4:0] dpra = {DPRA4, DPRA3, DPRA2, DPRA1, DPRA0};
+  reg [31:0] mem = INIT;
+  assign SPO = mem[a];
+  assign DPO = mem[dpra];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
 module RAM64X1D (
   // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L957
-  (* abc_arrival=1153 *)
+  (* abc9_arrival=1153 *)
   output DPO, SPO,
   input  D,
   (* clkbuf_sink *)
@@ -474,9 +1007,32 @@ module RAM64X1D (
   always @(posedge clk) if (WE) mem[a] <= D;
 endmodule
 
+module RAM64X1D_1 (
+  // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L957
+  (* abc9_arrival=1153 *)
+  output DPO, SPO,
+  input  D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input  WCLK,
+  input  WE,
+  input  A0, A1, A2, A3, A4, A5,
+  input  DPRA0, DPRA1, DPRA2, DPRA3, DPRA4, DPRA5
+);
+  parameter INIT = 64'h0;
+  parameter IS_WCLK_INVERTED = 1'b0;
+  wire [5:0] a = {A5, A4, A3, A2, A1, A0};
+  wire [5:0] dpra = {DPRA5, DPRA4, DPRA3, DPRA2, DPRA1, DPRA0};
+  reg [63:0] mem = INIT;
+  assign SPO = mem[a];
+  assign DPO = mem[dpra];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(negedge clk) if (WE) mem[a] <= D;
+endmodule
+
 module RAM128X1D (
   // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L957
-  (* abc_arrival=1153 *)
+  (* abc9_arrival=1153 *)
   output DPO, SPO,
   input        D,
   (* clkbuf_sink *)
@@ -494,9 +1050,293 @@ module RAM128X1D (
   always @(posedge clk) if (WE) mem[A] <= D;
 endmodule
 
+module RAM256X1D (
+  output DPO, SPO,
+  input        D,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input        WCLK,
+  input        WE,
+  input  [7:0] A, DPRA
+);
+  parameter INIT = 256'h0;
+  parameter IS_WCLK_INVERTED = 1'b0;
+  reg [255:0] mem = INIT;
+  assign SPO = mem[A];
+  assign DPO = mem[DPRA];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk) if (WE) mem[A] <= D;
+endmodule
+
+// Multi port.
+
+module RAM32M (
+  output [1:0] DOA,
+  output [1:0] DOB,
+  output [1:0] DOC,
+  output [1:0] DOD,
+  input [4:0] ADDRA,
+  input [4:0] ADDRB,
+  input [4:0] ADDRC,
+  input [4:0] ADDRD,
+  input [1:0] DIA,
+  input [1:0] DIB,
+  input [1:0] DIC,
+  input [1:0] DID,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT_A = 64'h0000000000000000;
+  parameter [63:0] INIT_B = 64'h0000000000000000;
+  parameter [63:0] INIT_C = 64'h0000000000000000;
+  parameter [63:0] INIT_D = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [63:0] mem_a = INIT_A;
+  reg [63:0] mem_b = INIT_B;
+  reg [63:0] mem_c = INIT_C;
+  reg [63:0] mem_d = INIT_D;
+  assign DOA = mem_a[2*ADDRA+:2];
+  assign DOB = mem_b[2*ADDRB+:2];
+  assign DOC = mem_c[2*ADDRC+:2];
+  assign DOD = mem_d[2*ADDRD+:2];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk)
+    if (WE) begin
+      mem_a[2*ADDRD+:2] <= DIA;
+      mem_b[2*ADDRD+:2] <= DIB;
+      mem_c[2*ADDRD+:2] <= DIC;
+      mem_d[2*ADDRD+:2] <= DID;
+    end
+endmodule
+
+module RAM32M16 (
+  output [1:0] DOA,
+  output [1:0] DOB,
+  output [1:0] DOC,
+  output [1:0] DOD,
+  output [1:0] DOE,
+  output [1:0] DOF,
+  output [1:0] DOG,
+  output [1:0] DOH,
+  input [4:0] ADDRA,
+  input [4:0] ADDRB,
+  input [4:0] ADDRC,
+  input [4:0] ADDRD,
+  input [4:0] ADDRE,
+  input [4:0] ADDRF,
+  input [4:0] ADDRG,
+  input [4:0] ADDRH,
+  input [1:0] DIA,
+  input [1:0] DIB,
+  input [1:0] DIC,
+  input [1:0] DID,
+  input [1:0] DIE,
+  input [1:0] DIF,
+  input [1:0] DIG,
+  input [1:0] DIH,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT_A = 64'h0000000000000000;
+  parameter [63:0] INIT_B = 64'h0000000000000000;
+  parameter [63:0] INIT_C = 64'h0000000000000000;
+  parameter [63:0] INIT_D = 64'h0000000000000000;
+  parameter [63:0] INIT_E = 64'h0000000000000000;
+  parameter [63:0] INIT_F = 64'h0000000000000000;
+  parameter [63:0] INIT_G = 64'h0000000000000000;
+  parameter [63:0] INIT_H = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [63:0] mem_a = INIT_A;
+  reg [63:0] mem_b = INIT_B;
+  reg [63:0] mem_c = INIT_C;
+  reg [63:0] mem_d = INIT_D;
+  reg [63:0] mem_e = INIT_E;
+  reg [63:0] mem_f = INIT_F;
+  reg [63:0] mem_g = INIT_G;
+  reg [63:0] mem_h = INIT_H;
+  assign DOA = mem_a[2*ADDRA+:2];
+  assign DOB = mem_b[2*ADDRB+:2];
+  assign DOC = mem_c[2*ADDRC+:2];
+  assign DOD = mem_d[2*ADDRD+:2];
+  assign DOE = mem_e[2*ADDRE+:2];
+  assign DOF = mem_f[2*ADDRF+:2];
+  assign DOG = mem_g[2*ADDRG+:2];
+  assign DOH = mem_h[2*ADDRH+:2];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk)
+    if (WE) begin
+      mem_a[2*ADDRH+:2] <= DIA;
+      mem_b[2*ADDRH+:2] <= DIB;
+      mem_c[2*ADDRH+:2] <= DIC;
+      mem_d[2*ADDRH+:2] <= DID;
+      mem_e[2*ADDRH+:2] <= DIE;
+      mem_f[2*ADDRH+:2] <= DIF;
+      mem_g[2*ADDRH+:2] <= DIG;
+      mem_h[2*ADDRH+:2] <= DIH;
+    end
+endmodule
+
+module RAM64M (
+  output DOA,
+  output DOB,
+  output DOC,
+  output DOD,
+  input [4:0] ADDRA,
+  input [4:0] ADDRB,
+  input [4:0] ADDRC,
+  input [4:0] ADDRD,
+  input DIA,
+  input DIB,
+  input DIC,
+  input DID,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT_A = 64'h0000000000000000;
+  parameter [63:0] INIT_B = 64'h0000000000000000;
+  parameter [63:0] INIT_C = 64'h0000000000000000;
+  parameter [63:0] INIT_D = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [63:0] mem_a = INIT_A;
+  reg [63:0] mem_b = INIT_B;
+  reg [63:0] mem_c = INIT_C;
+  reg [63:0] mem_d = INIT_D;
+  assign DOA = mem_a[ADDRA];
+  assign DOB = mem_b[ADDRB];
+  assign DOC = mem_c[ADDRC];
+  assign DOD = mem_d[ADDRD];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk)
+    if (WE) begin
+      mem_a[ADDRD] <= DIA;
+      mem_b[ADDRD] <= DIB;
+      mem_c[ADDRD] <= DIC;
+      mem_d[ADDRD] <= DID;
+    end
+endmodule
+
+module RAM64M8 (
+  output DOA,
+  output DOB,
+  output DOC,
+  output DOD,
+  output DOE,
+  output DOF,
+  output DOG,
+  output DOH,
+  input [4:0] ADDRA,
+  input [4:0] ADDRB,
+  input [4:0] ADDRC,
+  input [4:0] ADDRD,
+  input [4:0] ADDRE,
+  input [4:0] ADDRF,
+  input [4:0] ADDRG,
+  input [4:0] ADDRH,
+  input DIA,
+  input DIB,
+  input DIC,
+  input DID,
+  input DIE,
+  input DIF,
+  input DIG,
+  input DIH,
+  (* clkbuf_sink *)
+  (* invertible_pin = "IS_WCLK_INVERTED" *)
+  input WCLK,
+  input WE
+);
+  parameter [63:0] INIT_A = 64'h0000000000000000;
+  parameter [63:0] INIT_B = 64'h0000000000000000;
+  parameter [63:0] INIT_C = 64'h0000000000000000;
+  parameter [63:0] INIT_D = 64'h0000000000000000;
+  parameter [63:0] INIT_E = 64'h0000000000000000;
+  parameter [63:0] INIT_F = 64'h0000000000000000;
+  parameter [63:0] INIT_G = 64'h0000000000000000;
+  parameter [63:0] INIT_H = 64'h0000000000000000;
+  parameter [0:0] IS_WCLK_INVERTED = 1'b0;
+  reg [63:0] mem_a = INIT_A;
+  reg [63:0] mem_b = INIT_B;
+  reg [63:0] mem_c = INIT_C;
+  reg [63:0] mem_d = INIT_D;
+  reg [63:0] mem_e = INIT_E;
+  reg [63:0] mem_f = INIT_F;
+  reg [63:0] mem_g = INIT_G;
+  reg [63:0] mem_h = INIT_H;
+  assign DOA = mem_a[ADDRA];
+  assign DOB = mem_b[ADDRB];
+  assign DOC = mem_c[ADDRC];
+  assign DOD = mem_d[ADDRD];
+  assign DOE = mem_e[ADDRE];
+  assign DOF = mem_f[ADDRF];
+  assign DOG = mem_g[ADDRG];
+  assign DOH = mem_h[ADDRH];
+  wire clk = WCLK ^ IS_WCLK_INVERTED;
+  always @(posedge clk)
+    if (WE) begin
+      mem_a[ADDRH] <= DIA;
+      mem_b[ADDRH] <= DIB;
+      mem_c[ADDRH] <= DIC;
+      mem_d[ADDRH] <= DID;
+      mem_e[ADDRH] <= DIE;
+      mem_f[ADDRH] <= DIF;
+      mem_g[ADDRH] <= DIG;
+      mem_h[ADDRH] <= DIH;
+    end
+endmodule
+
+// ROM.
+
+module ROM16X1 (
+  output O,
+  input A0, A1, A2, A3
+);
+  parameter [15:0] INIT = 16'h0;
+  assign O = INIT[{A3, A2, A1, A0}];
+endmodule
+
+module ROM32X1 (
+  output O,
+  input A0, A1, A2, A3, A4
+);
+  parameter [31:0] INIT = 32'h0;
+  assign O = INIT[{A4, A3, A2, A1, A0}];
+endmodule
+
+module ROM64X1 (
+  output O,
+  input A0, A1, A2, A3, A4, A5
+);
+  parameter [63:0] INIT = 64'h0;
+  assign O = INIT[{A5, A4, A3, A2, A1, A0}];
+endmodule
+
+module ROM128X1 (
+  output O,
+  input A0, A1, A2, A3, A4, A5, A6
+);
+  parameter [127:0] INIT = 128'h0;
+  assign O = INIT[{A6, A5, A4, A3, A2, A1, A0}];
+endmodule
+
+module ROM256X1 (
+  output O,
+  input A0, A1, A2, A3, A4, A5, A6, A7
+);
+  parameter [255:0] INIT = 256'h0;
+  assign O = INIT[{A7, A6, A5, A4, A3, A2, A1, A0}];
+endmodule
+
+// Shift registers.
+
 module SRL16E (
   // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L904-L905
-  (* abc_arrival=1472 *)
+  (* abc9_arrival=1472 *)
   output Q,
   input A0, A1, A2, A3, CE,
   (* clkbuf_sink *)
@@ -544,9 +1384,9 @@ endmodule
 
 module SRLC32E (
   // Max delay from: https://github.com/SymbiFlow/prjxray-db/blob/34ea6eb08a63d21ec16264ad37a0a7b142ff6031/artix7/timings/CLBLM_R.sdf#L904-L905
-  (* abc_arrival=1472 *)
+  (* abc9_arrival=1472 *)
   output Q,
-  (* abc_arrival=1114 *)
+  (* abc9_arrival=1114 *)
   output Q31,
   input [4:0] A,
   input CE,
@@ -569,6 +1409,515 @@ module SRLC32E (
       always @(posedge CLK) if (CE) r <= { r[30:0], D };
   endgenerate
 endmodule
+
+// DSP
+
+// Virtex 2, Virtex 2 Pro, Spartan 3.
+
+// Asynchronous mode.
+
+module MULT18X18 (
+    input signed [17:0] A,
+    input signed [17:0] B,
+    output signed [35:0] P
+);
+
+assign P = A * B;
+
+endmodule
+
+// Synchronous mode.
+
+module MULT18X18S (
+    input signed [17:0] A,
+    input signed [17:0] B,
+    output reg signed [35:0] P,
+    (* clkbuf_sink *)
+    input C,
+    input CE,
+    input R
+);
+
+always @(posedge C)
+	if (R)
+		P <= 0;
+	else if (CE)
+		P <= A * B;
+
+endmodule
+
+// Spartan 3E, Spartan 3A.
+
+module MULT18X18SIO (
+    input signed [17:0] A,
+    input signed [17:0] B,
+    output signed [35:0] P,
+    (* clkbuf_sink *)
+    input CLK,
+    input CEA,
+    input CEB,
+    input CEP,
+    input RSTA,
+    input RSTB,
+    input RSTP,
+    input signed [17:0] BCIN,
+    output signed [17:0] BCOUT
+);
+
+parameter integer AREG = 1;
+parameter integer BREG = 1;
+parameter B_INPUT = "DIRECT";
+parameter integer PREG = 1;
+
+// The multiplier.
+wire signed [35:0] P_MULT;
+assign P_MULT = A_MULT * B_MULT;
+
+// The cascade output.
+assign BCOUT = B_MULT;
+
+// The B input multiplexer.
+wire signed [17:0] B_MUX;
+assign B_MUX = (B_INPUT == "DIRECT") ? B : BCIN;
+
+// The registers.
+reg signed [17:0] A_REG;
+reg signed [17:0] B_REG;
+reg signed [35:0] P_REG;
+
+initial begin
+	A_REG = 0;
+	B_REG = 0;
+	P_REG = 0;
+end
+
+always @(posedge CLK) begin
+	if (RSTA)
+		A_REG <= 0;
+	else if (CEA)
+		A_REG <= A;
+
+	if (RSTB)
+		B_REG <= 0;
+	else if (CEB)
+		B_REG <= B_MUX;
+
+	if (RSTP)
+		P_REG <= 0;
+	else if (CEP)
+		P_REG <= P_MULT;
+end
+
+// The register enables.
+wire signed [17:0] A_MULT;
+wire signed [17:0] B_MULT;
+assign A_MULT = (AREG == 1) ? A_REG : A;
+assign B_MULT = (BREG == 1) ? B_REG : B_MUX;
+assign P = (PREG == 1) ? P_REG : P_MULT;
+
+endmodule
+
+// Spartan 3A DSP.
+
+module DSP48A (
+    input signed [17:0] A,
+    input signed [17:0] B,
+    input signed [47:0] C,
+    input signed [17:0] D,
+    input signed [47:0] PCIN,
+    input CARRYIN,
+    input [7:0] OPMODE,
+    output signed [47:0] P,
+    output signed [17:0] BCOUT,
+    output signed [47:0] PCOUT,
+    output CARRYOUT,
+    (* clkbuf_sink *)
+    input CLK,
+    input CEA,
+    input CEB,
+    input CEC,
+    input CED,
+    input CEM,
+    input CECARRYIN,
+    input CEOPMODE,
+    input CEP,
+    input RSTA,
+    input RSTB,
+    input RSTC,
+    input RSTD,
+    input RSTM,
+    input RSTCARRYIN,
+    input RSTOPMODE,
+    input RSTP
+);
+
+parameter integer A0REG = 0;
+parameter integer A1REG = 1;
+parameter integer B0REG = 0;
+parameter integer B1REG = 1;
+parameter integer CREG = 1;
+parameter integer DREG = 1;
+parameter integer MREG = 1;
+parameter integer CARRYINREG = 1;
+parameter integer OPMODEREG = 1;
+parameter integer PREG = 1;
+parameter CARRYINSEL = "CARRYIN";
+parameter RSTTYPE = "SYNC";
+
+// This is a strict subset of Spartan 6 -- reuse its model.
+
+DSP48A1 #(
+	.A0REG(A0REG),
+	.A1REG(A1REG),
+	.B0REG(B0REG),
+	.B1REG(B1REG),
+	.CREG(CREG),
+	.DREG(DREG),
+	.MREG(MREG),
+	.CARRYINREG(CARRYINREG),
+	.CARRYOUTREG(0),
+	.OPMODEREG(OPMODEREG),
+	.PREG(PREG),
+	.CARRYINSEL(CARRYINSEL),
+	.RSTTYPE(RSTTYPE)
+) upgrade (
+	.A(A),
+	.B(B),
+	.C(C),
+	.D(D),
+	.PCIN(PCIN),
+	.CARRYIN(CARRYIN),
+	.OPMODE(OPMODE),
+	// M unconnected
+	.P(P),
+	.BCOUT(BCOUT),
+	.PCOUT(PCOUT),
+	.CARRYOUT(CARRYOUT),
+	// CARRYOUTF unconnected
+	.CLK(CLK),
+	.CEA(CEA),
+	.CEB(CEB),
+	.CEC(CEC),
+	.CED(CED),
+	.CEM(CEM),
+	.CECARRYIN(CECARRYIN),
+	.CEOPMODE(CEOPMODE),
+	.CEP(CEP),
+	.RSTA(RSTA),
+	.RSTB(RSTB),
+	.RSTC(RSTC),
+	.RSTD(RSTD),
+	.RSTM(RSTM),
+	.RSTCARRYIN(RSTCARRYIN),
+	.RSTOPMODE(RSTOPMODE),
+	.RSTP(RSTP)
+);
+
+endmodule
+
+// Spartan 6.
+
+module DSP48A1 (
+    input signed [17:0] A,
+    input signed [17:0] B,
+    input signed [47:0] C,
+    input signed [17:0] D,
+    input signed [47:0] PCIN,
+    input CARRYIN,
+    input [7:0] OPMODE,
+    output signed [35:0] M,
+    output signed [47:0] P,
+    output signed [17:0] BCOUT,
+    output signed [47:0] PCOUT,
+    output CARRYOUT,
+    output CARRYOUTF,
+    (* clkbuf_sink *)
+    input CLK,
+    input CEA,
+    input CEB,
+    input CEC,
+    input CED,
+    input CEM,
+    input CECARRYIN,
+    input CEOPMODE,
+    input CEP,
+    input RSTA,
+    input RSTB,
+    input RSTC,
+    input RSTD,
+    input RSTM,
+    input RSTCARRYIN,
+    input RSTOPMODE,
+    input RSTP
+);
+
+parameter integer A0REG = 0;
+parameter integer A1REG = 1;
+parameter integer B0REG = 0;
+parameter integer B1REG = 1;
+parameter integer CREG = 1;
+parameter integer DREG = 1;
+parameter integer MREG = 1;
+parameter integer CARRYINREG = 1;
+parameter integer CARRYOUTREG = 1;
+parameter integer OPMODEREG = 1;
+parameter integer PREG = 1;
+parameter CARRYINSEL = "OPMODE5";
+parameter RSTTYPE = "SYNC";
+
+wire signed [35:0] M_MULT;
+wire signed [47:0] P_IN;
+wire signed [17:0] A0_OUT;
+wire signed [17:0] B0_OUT;
+wire signed [17:0] A1_OUT;
+wire signed [17:0] B1_OUT;
+wire signed [17:0] B1_IN;
+wire signed [47:0] C_OUT;
+wire signed [17:0] D_OUT;
+wire signed [7:0] OPMODE_OUT;
+wire CARRYIN_OUT;
+wire CARRYOUT_IN;
+wire CARRYIN_IN;
+reg signed [47:0] XMUX;
+reg signed [47:0] ZMUX;
+
+// The registers.
+reg signed [17:0] A0_REG;
+reg signed [17:0] A1_REG;
+reg signed [17:0] B0_REG;
+reg signed [17:0] B1_REG;
+reg signed [47:0] C_REG;
+reg signed [17:0] D_REG;
+reg signed [35:0] M_REG;
+reg signed [47:0] P_REG;
+reg [7:0] OPMODE_REG;
+reg CARRYIN_REG;
+reg CARRYOUT_REG;
+
+initial begin
+	A0_REG = 0;
+	A1_REG = 0;
+	B0_REG = 0;
+	B1_REG = 0;
+	C_REG = 0;
+	D_REG = 0;
+	M_REG = 0;
+	P_REG = 0;
+	OPMODE_REG = 0;
+	CARRYIN_REG = 0;
+	CARRYOUT_REG = 0;
+end
+
+generate
+
+if (RSTTYPE == "SYNC") begin
+	always @(posedge CLK) begin
+		if (RSTA) begin
+			A0_REG <= 0;
+			A1_REG <= 0;
+		end else if (CEA) begin
+			A0_REG <= A;
+			A1_REG <= A0_OUT;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTB) begin
+			B0_REG <= 0;
+			B1_REG <= 0;
+		end else if (CEB) begin
+			B0_REG <= B;
+			B1_REG <= B1_IN;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTC) begin
+			C_REG <= 0;
+		end else if (CEC) begin
+			C_REG <= C;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTD) begin
+			D_REG <= 0;
+		end else if (CED) begin
+			D_REG <= D;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTM) begin
+			M_REG <= 0;
+		end else if (CEM) begin
+			M_REG <= M_MULT;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTP) begin
+			P_REG <= 0;
+		end else if (CEP) begin
+			P_REG <= P_IN;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTOPMODE) begin
+			OPMODE_REG <= 0;
+		end else if (CEOPMODE) begin
+			OPMODE_REG <= OPMODE;
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RSTCARRYIN) begin
+			CARRYIN_REG <= 0;
+			CARRYOUT_REG <= 0;
+		end else if (CECARRYIN) begin
+			CARRYIN_REG <= CARRYIN_IN;
+			CARRYOUT_REG <= CARRYOUT_IN;
+		end
+	end
+end else begin
+	always @(posedge CLK, posedge RSTA) begin
+		if (RSTA) begin
+			A0_REG <= 0;
+			A1_REG <= 0;
+		end else if (CEA) begin
+			A0_REG <= A;
+			A1_REG <= A0_OUT;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTB) begin
+		if (RSTB) begin
+			B0_REG <= 0;
+			B1_REG <= 0;
+		end else if (CEB) begin
+			B0_REG <= B;
+			B1_REG <= B1_IN;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTC) begin
+		if (RSTC) begin
+			C_REG <= 0;
+		end else if (CEC) begin
+			C_REG <= C;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTD) begin
+		if (RSTD) begin
+			D_REG <= 0;
+		end else if (CED) begin
+			D_REG <= D;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTM) begin
+		if (RSTM) begin
+			M_REG <= 0;
+		end else if (CEM) begin
+			M_REG <= M_MULT;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTP) begin
+		if (RSTP) begin
+			P_REG <= 0;
+		end else if (CEP) begin
+			P_REG <= P_IN;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTOPMODE) begin
+		if (RSTOPMODE) begin
+			OPMODE_REG <= 0;
+		end else if (CEOPMODE) begin
+			OPMODE_REG <= OPMODE;
+		end
+	end
+
+	always @(posedge CLK, posedge RSTCARRYIN) begin
+		if (RSTCARRYIN) begin
+			CARRYIN_REG <= 0;
+			CARRYOUT_REG <= 0;
+		end else if (CECARRYIN) begin
+			CARRYIN_REG <= CARRYIN_IN;
+			CARRYOUT_REG <= CARRYOUT_IN;
+		end
+	end
+end
+
+endgenerate
+
+// The register enables.
+assign A0_OUT = (A0REG == 1) ? A0_REG : A;
+assign A1_OUT = (A1REG == 1) ? A1_REG : A0_OUT;
+assign B0_OUT = (B0REG == 1) ? B0_REG : B;
+assign B1_OUT = (B1REG == 1) ? B1_REG : B1_IN;
+assign C_OUT = (CREG == 1) ? C_REG : C;
+assign D_OUT = (DREG == 1) ? D_REG : D;
+assign M = (MREG == 1) ? M_REG : M_MULT;
+assign P = (PREG == 1) ? P_REG : P_IN;
+assign OPMODE_OUT = (OPMODEREG == 1) ? OPMODE_REG : OPMODE;
+assign CARRYIN_OUT = (CARRYINREG == 1) ? CARRYIN_REG : CARRYIN_IN;
+assign CARRYOUT = (CARRYOUTREG == 1) ? CARRYOUT_REG : CARRYOUT_IN;
+assign CARRYOUTF = CARRYOUT;
+
+// The pre-adder.
+wire signed [17:0] PREADDER;
+assign B1_IN = OPMODE_OUT[4] ? PREADDER : B0_OUT;
+assign PREADDER = OPMODE_OUT[6] ? D_OUT - B0_OUT : D_OUT + B0_OUT;
+
+// The multiplier.
+assign M_MULT = A1_OUT * B1_OUT;
+
+// The carry in selection.
+assign CARRYIN_IN = (CARRYINSEL == "OPMODE5") ? OPMODE_OUT[5] : CARRYIN;
+
+// The post-adder inputs.
+always @* begin
+	case (OPMODE_OUT[1:0])
+		2'b00: XMUX <= 0;
+		2'b01: XMUX <= M;
+		2'b10: XMUX <= P;
+		2'b11: XMUX <= {D_OUT[11:0], B1_OUT, A1_OUT};
+		default: XMUX <= 48'hxxxxxxxxxxxx;
+	endcase
+end
+
+always @* begin
+	case (OPMODE_OUT[3:2])
+		2'b00: ZMUX <= 0;
+		2'b01: ZMUX <= PCIN;
+		2'b10: ZMUX <= P;
+		2'b11: ZMUX <= C_OUT;
+		default: ZMUX <= 48'hxxxxxxxxxxxx;
+	endcase
+end
+
+// The post-adder.
+wire signed [48:0] X_EXT;
+wire signed [48:0] Z_EXT;
+assign X_EXT = XMUX;
+assign Z_EXT = ZMUX;
+assign {CARRYOUT_IN, P_IN} = OPMODE_OUT[7] ? (Z_EXT - (X_EXT + CARRYIN_OUT)) : (Z_EXT + X_EXT + CARRYIN_OUT);
+
+// Cascade outputs.
+assign BCOUT = B1_OUT;
+assign PCOUT = P;
+
+endmodule
+
+// TODO: DSP48 (Virtex 4).
+
+// TODO: DSP48E (Virtex 5).
+
+// Virtex 6, Series 7.
 
 module DSP48E1 (
     output [29:0] ACOUT,
@@ -1032,3 +2381,5 @@ module DSP48E1 (
     endgenerate
 
 endmodule
+
+// TODO: DSP48E2 (Ultrascale).

@@ -343,6 +343,13 @@ Verilog Attributes and non-standard features
 - The ``clkbuf_sink`` attribute can be set on an input port of a module to
   request clock buffer insertion by the ``clkbufmap`` pass.
 
+- The ``clkbuf_inv`` attribute can be set on an output port of a module
+  with the value set to the name of an input port of that module.  When
+  the ``clkbufmap`` would otherwise insert a clock buffer on this output,
+  it will instead try inserting the clock buffer on the input port (this
+  is used to implement clock inverter cells that clock buffer insertion
+  will "see through").
+
 - The ``clkbuf_inhibit`` is the default attribute to set on a wire to prevent
   automatic clock buffer insertion by ``clkbufmap``. This behaviour can be
   overridden by providing a custom selection to ``clkbufmap``.
@@ -357,19 +364,24 @@ Verilog Attributes and non-standard features
   it as the external-facing pin of an I/O pad, and prevents ``iopadmap``
   from inserting another pad cell on it.
 
-- The module attribute ``abc_box_id`` specifies a positive integer linking a
+- The module attribute ``abc9_box_id`` specifies a positive integer linking a
   blackbox or whitebox definition to a corresponding entry in a `abc9`
   box-file.
 
-- The port attribute ``abc_carry`` marks the carry-in (if an input port) and
+- The port attribute ``abc9_carry`` marks the carry-in (if an input port) and
   carry-out (if output port) ports of a box. This information is necessary for
   `abc9` to preserve the integrity of carry-chains. Specifying this attribute
   onto a bus port will affect only its most significant bit.
 
-- The port attribute ``abc_arrival`` specifies an integer (for output ports
+- The port attribute ``abc9_arrival`` specifies an integer (for output ports
   only) to be used as the arrival time of this sequential port. It can be used,
   for example, to specify the clk-to-Q delay of a flip-flop for consideration
   during techmapping.
+
+- The frontend sets attributes ``always_comb``, ``always_latch`` and
+  ``always_ff`` on processes derived from SystemVerilog style always blocks
+  according to the type of the always. These are checked for correctness in
+  ``proc_dlatch``.
 
 - In addition to the ``(* ... *)`` attribute syntax, Yosys supports
   the non-standard ``{* ... *}`` attribute syntax to set default attributes
@@ -509,6 +521,8 @@ from SystemVerilog:
 - SystemVerilog packages are supported. Once a SystemVerilog file is read
   into a design with ``read_verilog``, all its packages are available to
   SystemVerilog files being read into the same design afterwards.
+
+- typedefs are supported (including inside packages)
 
 - SystemVerilog interfaces (SVIs) are supported. Modports for specifying whether
   ports are inputs or outputs are supported.

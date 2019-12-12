@@ -273,6 +273,7 @@ struct SynthIce40Pass : public ScriptPass
 			run("opt_expr");
 			run("opt_clean");
 			if (help_mode || dsp) {
+				run("memory_dff");
 				run("techmap -map +/mul2dsp.v -map +/ice40/dsp_map.v -D DSP_A_MAXWIDTH=16 -D DSP_B_MAXWIDTH=16 "
 						"-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 -D DSP_Y_MINWIDTH=11 "
 						"-D DSP_NAME=$__MUL16X16", "(if -dsp)");
@@ -349,7 +350,7 @@ struct SynthIce40Pass : public ScriptPass
 			}
 			if (!noabc) {
 				if (abc == "abc9") {
-					run("read_verilog -icells -lib +/ice40/abc_model.v");
+					run("read_verilog -icells -lib +/ice40/abc9_model.v");
 					int wire_delay;
 					if (device_opt == "lp")
 						wire_delay = 400;
@@ -357,11 +358,12 @@ struct SynthIce40Pass : public ScriptPass
 						wire_delay = 750;
 					else
 						wire_delay = 250;
-					run(abc + stringf(" -W %d -lut +/ice40/abc_%s.lut -box +/ice40/abc_%s.box", wire_delay, device_opt.c_str(), device_opt.c_str()), "(skip if -noabc)");
+					run(abc + stringf(" -W %d -lut +/ice40/abc9_%s.lut -box +/ice40/abc9_%s.box", wire_delay, device_opt.c_str(), device_opt.c_str()), "(skip if -noabc)");
 				}
 				else
 					run(abc + " -dress -lut 4", "(skip if -noabc)");
 			}
+			run("ice40_wrapcarry -unwrap");
 			run("techmap -D NO_LUT -map +/ice40/cells_map.v");
 			run("clean");
 			run("opt_lut -dlogic SB_CARRY:I0=2:I1=1:CI=0");
@@ -379,6 +381,7 @@ struct SynthIce40Pass : public ScriptPass
 
 		if (check_label("check"))
 		{
+			run("autoname");
 			run("hierarchy -check");
 			run("stat");
 			run("check -noinit");
