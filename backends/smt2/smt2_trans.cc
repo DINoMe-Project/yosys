@@ -1046,14 +1046,12 @@ struct Smt2Worker {
           else
             init_list.push_back(stringf("(= %s #b%s) ; %s", get_bv(sig).c_str(),
                                         val.as_string().c_str(), get_id(wire)));
-          inited_symbol.push_back(get_bool(sig).c_str());
         } else {
           for (int i = 0; i < GetSize(sig); i++)
             if (val[i] == State::S0 || val[i] == State::S1)
               init_list.push_back(stringf(
                   "(= %s %s) ; %s", get_bool(sig[i]).c_str(),
                   val[i] == State::S1 ? "true" : "false", get_id(wire)));
-              inited_symbol.push_back(get_bool(sig[i]).c_str());
         }
       } else {
         log("no init for wire %s\n", log_signal(wire));
@@ -1185,9 +1183,10 @@ struct Smt2Worker {
           trans.push_back(stringf("  (= %s %s) ; %s %s\n", expr_d.c_str(),
                                   expr_q.c_str(), get_id(cell),
                                   log_signal(cell->getPort("\\Q"))));
-	  if (decls_map.count(expr_d.c_str()))
-		  trans.push_back(stringf("%  (= %s %s) ; %s %s\n", decls_map[expr_d.c_str()].c_str(), expr_q.c_str(), get_id(cell),
-					  log_signal(cell->getPort("\\Q"))));
+	  /*
+		if (decls_map.count(expr_d.c_str()))
+		  trans.push_back(stringf("(= %s %s) ; %s %s\n", decls_map[expr_d.c_str()].c_str(), expr_q.c_str(), get_id(cell),
+					  log_signal(cell->getPort("\\Q"))));*/
 	  ex_state_eq.push_back(
               stringf("(= %s %s)", get_bv(cell->getPort("\\Q")).c_str(),
                       get_bv(cell->getPort("\\Q"), "other_state").c_str()));
@@ -1561,9 +1560,6 @@ struct Smt2Worker {
     else
       f << "true)";
     f << stringf(" ; end of module %s\n", get_id(module));
-    for(auto d : decls_map){
-      f<<stringf("% hahaha %s = %s\n",d.first.c_str(),d.second.c_str());
-    }
   }
 };
 
